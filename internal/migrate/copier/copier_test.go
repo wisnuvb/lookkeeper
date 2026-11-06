@@ -89,6 +89,8 @@ func TestPgcopydbCheckVersionPinning(t *testing.T) {
 		{"empty version allowed when opted in", "pgcopydb version ", "0.18", true, ""},
 		{"no pin accepts any", "pgcopydb version 9.9", "", false, ""},
 		{"garbage", "hello", "0.18", false, "cannot determine"},
+		{"version line glued to a log line", "pgcopydb version 2026-11-06 11:46:57.383 1 INFO main.c:150 Running", "0.18", false, "does not report its version"},
+		{"log line first, version after", "2026-11-06 1 INFO Running pgcopydb version  from x\npgcopydb version 0.18", "0.18", false, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tool(t, dir, "pgcopydb", `echo "`+tc.out+`"`)

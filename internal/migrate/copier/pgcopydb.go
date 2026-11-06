@@ -17,7 +17,11 @@ func (p *pgcopydb) Name() string { return KindPgcopydb }
 
 // The official image prints "pgcopydb version " with nothing after it (observed
 // with v0.18 in the Phase 3 spike), so an empty version is a real case.
-var pgcopydbVersion = regexp.MustCompile(`(?m)^pgcopydb version ([^\s]*)`)
+//
+// stdout and stderr arrive interleaved, so the line may be glued to a log line
+// ("pgcopydb version 2026-11-06 ... INFO"): only a token that looks like a
+// release number counts as the version.
+var pgcopydbVersion = regexp.MustCompile(`pgcopydb version(?: ([0-9]+\.[0-9]+(?:\.[0-9]+)?)\b)?`)
 
 // forbiddenFlags must never reach pgcopydb (ADR 0002, SPEC 9). A test asserts
 // that no code path builds them.
@@ -34,11 +38,17 @@ func (p *pgcopydb) Check(ctx context.Context, sourceMajor int) error {
 	if err != nil {
 		return fmt.Errorf("pgcopydb is not usable: %w", err)
 	}
-	m := pgcopydbVersion.FindStringSubmatch(res.Output)
-	if m == nil {
+	all := pgcopydbVersion.FindAllStringSubmatch(res.Output, -1)
+	if len(all) == 0 {
 		return fmt.Errorf("cannot determine the pgcopydb version from %q", firstLine(res.Output))
 	}
-	got := m[1]
+	got := ""
+	for _, m := range all { // the log line "Running pgcopydb version  from" has none
+		if m[1] != "" {
+			got = m[1]
+			break
+		}
+	}
 	if p.cfg.PinnedVersion != "" && got != p.cfg.PinnedVersion && !p.cfg.AllowUntested {
 		if got == "" {
 			return fmt.Errorf("this pgcopydb build does not report its version (the official container image does not); Lockkeeper is pinned to %s: use a package build that reports it, or pass --allow-untested-pgcopydb if you pinned the image by digest", p.cfg.PinnedVersion)

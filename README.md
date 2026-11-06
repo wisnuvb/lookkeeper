@@ -72,6 +72,17 @@ make build                     # or: go build -o lockkeeper ./cmd/lockkeeper
    ./lockkeeper monitor run            # the daemon; SIGTERM shuts down gracefully
    ```
 
+Planning a migration (read-only; changes nothing on either server):
+
+```sh
+./lockkeeper inventory --source rds-main
+./lockkeeper preflight pg --source rds-main --target ovh-main   # exit 0 ok, 2 warnings, 3 blockers
+```
+
+Optional extras: a Prometheus endpoint (`monitor.metrics`, loopback only by default; note port 9187 is
+also postgres_exporter's default), and a CloudWatch reader for RDS free storage
+([docs/cloudwatch-iam.md](docs/cloudwatch-iam.md), **never validated against real AWS**).
+
 A systemd unit is in [deploy/lockkeeper.service](deploy/lockkeeper.service) (untested on a real host).
 
 ## Security model in short

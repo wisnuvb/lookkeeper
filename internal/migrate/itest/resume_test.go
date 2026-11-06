@@ -33,7 +33,7 @@ func TestKillMidCopyThenResume(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			r := newRig(t, copierKinds()[0], rigOptions{})
 			// A bigger table makes the copy last long enough to interrupt.
-			exec(t, r.src.AdminDB(t, "app"), `INSERT INTO ledger (account_id, amount) SELECT 1 + g % 2000, g FROM generate_series(1, 600000) g`)
+			mustExec(t, r.src.AdminDB(t, "app"), `INSERT INTO ledger (account_id, amount) SELECT 1 + g % 2000, g FROM generate_series(1, 600000) g`)
 			hash, id := r.plan()
 			if o := r.apply(hash); o.code != 0 {
 				t.Fatalf("apply: %s", o.all())
@@ -165,7 +165,7 @@ func TestKillDuringFollowingThenResume(t *testing.T) {
 	}
 
 	// Replication does not need the driver: break its connection; the worker reconnects.
-	exec(t, r.src.Admin(t), `SELECT pg_terminate_backend(pid) FROM pg_stat_replication`)
+	mustExec(t, r.src.Admin(t), `SELECT pg_terminate_backend(pid) FROM pg_stat_replication`)
 	time.Sleep(2 * time.Second)
 	// The lock and lease were released: resume can take over.
 	o := r.run("migrate", "resume", "--migration", id, "--allow-untested-pgcopydb", "--max-lag", "8MiB", "--caught-up-for", "3s", "--poll-interval", "1s")

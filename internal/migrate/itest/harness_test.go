@@ -86,7 +86,7 @@ store:
 	return r
 }
 
-func exec(t testing.TB, c *pgx.Conn, sql string) {
+func mustExec(t testing.TB, c *pgx.Conn, sql string) {
 	t.Helper()
 	if _, err := c.Exec(context.Background(), sql); err != nil {
 		t.Fatalf("%s: %v", sql, err)
@@ -99,8 +99,8 @@ func exec(t testing.TB, c *pgx.Conn, sql string) {
 func (r *rig) seed() {
 	t := r.t
 	for _, db := range []string{"app", "billing"} {
-		exec(t, r.src.Admin(t), "CREATE DATABASE "+db)
-		exec(t, r.tgt.Admin(t), "CREATE DATABASE "+db)
+		mustExec(t, r.src.Admin(t), "CREATE DATABASE "+db)
+		mustExec(t, r.tgt.Admin(t), "CREATE DATABASE "+db)
 	}
 	app := r.src.AdminDB(t, "app")
 	for _, q := range []string{
@@ -111,11 +111,11 @@ func (r *rig) seed() {
 		`INSERT INTO ledger (account_id, amount) SELECT 1 + g % 2000, g FROM generate_series(1, 5000) g`,
 		`INSERT INTO events (payload) SELECT 'seed-' || g FROM generate_series(1, 3000) g`,
 	} {
-		exec(t, app, q)
+		mustExec(t, app, q)
 	}
 	billing := r.src.AdminDB(t, "billing")
-	exec(t, billing, `CREATE TABLE invoices (id serial PRIMARY KEY, amount int NOT NULL)`)
-	exec(t, billing, `INSERT INTO invoices (amount) SELECT g FROM generate_series(1, 500) g`)
+	mustExec(t, billing, `CREATE TABLE invoices (id serial PRIMARY KEY, amount int NOT NULL)`)
+	mustExec(t, billing, `INSERT INTO invoices (amount) SELECT g FROM generate_series(1, 500) g`)
 }
 
 func (r *rig) appDSN() string {

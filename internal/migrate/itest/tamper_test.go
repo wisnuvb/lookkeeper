@@ -45,7 +45,7 @@ func TestPlanTamperDriftAndTypedConfirmation(t *testing.T) {
 	r.stateSQL(`UPDATE migrations SET input_json = replace(input_json, '"NoOwner":true', '"NoOwner":false') WHERE id = ?`, id)
 
 	// 2. A table is created after the plan: the schema freeze was not respected.
-	exec(t, r.src.AdminDB(t, "app"), `CREATE TABLE surprise (id int PRIMARY KEY)`)
+	mustExec(t, r.src.AdminDB(t, "app"), `CREATE TABLE surprise (id int PRIMARY KEY)`)
 	o = r.apply(hash)
 	if o.code == 0 || !strings.Contains(o.all(), "surprise") || !strings.Contains(o.all(), "schema") {
 		t.Fatalf("schema drift after the plan must be refused and name the table (%d):\n%s", o.code, o.all())
@@ -53,7 +53,7 @@ func TestPlanTamperDriftAndTypedConfirmation(t *testing.T) {
 	if strings.Contains(r.sourceFingerprint(), "role:lk_") {
 		t.Fatal("a refused apply created the role")
 	}
-	exec(t, r.src.AdminDB(t, "app"), `DROP TABLE surprise`)
+	mustExec(t, r.src.AdminDB(t, "app"), `DROP TABLE surprise`)
 
 	// 3. Typed confirmation: a wrong phrase is refused, the exact phrase works.
 	r.stdin = "yes\n"
@@ -99,7 +99,7 @@ func TestPlanTamperDriftAndTypedConfirmation(t *testing.T) {
 // replicate: planning must fail with a clear message and change nothing.
 func TestRolesWithoutPrivilegesFailBeforeAnyChange(t *testing.T) {
 	r := newRig(t, copierKinds()[0], rigOptions{})
-	exec(t, r.src.Admin(t), `CREATE ROLE limited LOGIN PASSWORD 'limited-pw-not-a-secret'`)
+	mustExec(t, r.src.Admin(t), `CREATE ROLE limited LOGIN PASSWORD 'limited-pw-not-a-secret'`)
 	before := r.sourceFingerprint()
 	cfg, _ := os.ReadFile(r.cfg)
 	limited := strings.Replace(string(cfg), "    user: postgres\n    password: { env: LK_SRC_PW }", "    user: limited\n    password: { env: LK_SRC_PW }", 1)

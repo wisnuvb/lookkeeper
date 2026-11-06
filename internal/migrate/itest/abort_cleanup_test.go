@@ -40,10 +40,10 @@ func TestAbortLeavesTheSourceAloneAndCleanupRemovesExactlyWhatWasCreated(t *test
 	// unrelated slot, a publication and a role that are not ours.
 	admin := r.src.Admin(t)
 	app := r.src.AdminDB(t, "app")
-	exec(t, app, `SELECT pg_create_logical_replication_slot('lk_mdeadbeef_d1_a1', 'pgoutput')`)
-	exec(t, app, `SELECT pg_create_logical_replication_slot('analytics_slot', 'pgoutput')`)
-	exec(t, app, `CREATE PUBLICATION analytics_pub FOR TABLE accounts`)
-	exec(t, admin, `CREATE ROLE analytics_role LOGIN`)
+	mustExec(t, app, `SELECT pg_create_logical_replication_slot('lk_mdeadbeef_d1_a1', 'pgoutput')`)
+	mustExec(t, app, `SELECT pg_create_logical_replication_slot('analytics_slot', 'pgoutput')`)
+	mustExec(t, app, `CREATE PUBLICATION analytics_pub FOR TABLE accounts`)
+	mustExec(t, admin, `CREATE ROLE analytics_role LOGIN`)
 
 	hash, id := r.plan()
 	if o := r.apply(hash); o.code != 0 {

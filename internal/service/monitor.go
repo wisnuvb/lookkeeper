@@ -12,6 +12,7 @@ import (
 	"github.com/wisnuvb/lockkeeper/internal/alert/notify"
 	"github.com/wisnuvb/lockkeeper/internal/alert/rules"
 	"github.com/wisnuvb/lockkeeper/internal/collector"
+	"github.com/wisnuvb/lockkeeper/internal/prom"
 	"github.com/wisnuvb/lockkeeper/internal/store"
 )
 
@@ -28,7 +29,8 @@ type runner struct {
 	store      *store.Store
 	engine     *rules.Engine
 	dispatcher *notify.Dispatcher
-	lastTick   atomic.Int64 // unix nanoseconds of the most recent finished tick
+	lastTick   atomic.Int64   // unix nanoseconds of the most recent finished tick
+	reg        *prom.Registry // nil unless monitor.metrics is configured (all methods are nil-safe)
 }
 
 // MonitorRun collects metrics from every configured target until ctx is
@@ -70,6 +72,19 @@ func (s *Service) MonitorRun(ctx context.Context) error {
 	r := &runner{svc: s, store: st, engine: engine, dispatcher: dispatcher}
 	r.lastTick.Store(s.deps.Now().UnixNano())
 
+	// Optional Prometheus endpoint: off unless monitor.metrics is configured. A
+	// bad or busy address fails the start instead of silently running without it.
+	var metrics *prom.Server
+	if m := s.cfg.Monitor.Metrics; m != nil {
+		r.reg = prom.NewRegistry()
+		r.reg.SetAlerts(engine.Active()) // alerts restored from the previous run
+		metrics, err = prom.Start(r.reg, prom.ServerOptions{Listen: m.Listen, AllowNonLoopback: m.AllowNonLoopback, Log: s.log})
+		if err != nil {
+			return err
+		}
+		s.log.Info("prometheus endpoint listening", "addr", metrics.Addr())
+	}
+
 	targets := s.cfg.Monitor.Targets
 	s.log.Info("monitor started",
 		"targets", targets, "interval", s.cfg.Monitor.Interval.D().String(),
@@ -94,6 +109,13 @@ func (s *Service) MonitorRun(ctx context.Context) error {
 
 	<-ctx.Done()
 	s.log.Info("shutting down: waiting for in-flight collections")
+	if metrics != nil {
+		mctx, mcancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		if err := metrics.Shutdown(mctx); err != nil {
+			s.log.Warn("prometheus endpoint did not shut down cleanly", "error", err)
+		}
+		mcancel()
+	}
 	wg.Wait()
 
 	// Persist final state and flush queued notifications even though ctx is done.
@@ -181,6 +203,8 @@ func (r *runner) tick(ctx context.Context, col collector.Collector) {
 		log.Error("could not store samples", "error", err)
 	}
 	events := r.engine.Eval(r.svc.deps.Now(), col.Target(), samples, complete)
+	r.reg.UpdateTarget(col.Target(), samples, complete, r.svc.deps.Now())
+	r.reg.SetAlerts(r.engine.Active())
 	for _, ev := range events {
 		log.Info("alert event", "rule", ev.Rule, "state", ev.State, "severity", ev.Severity, "summary", ev.Summary)
 		if err := r.store.AppendEvent(wctx, ev); err != nil {

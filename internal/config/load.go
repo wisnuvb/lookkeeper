@@ -141,6 +141,9 @@ func (c *Config) applyDefaults() {
 	if c.Monitor.Heartbeat != nil && c.Monitor.Heartbeat.Interval == 0 {
 		c.Monitor.Heartbeat.Interval = Duration(time.Minute)
 	}
+	if c.Monitor.Metrics != nil && c.Monitor.Metrics.Listen == "" {
+		c.Monitor.Metrics.Listen = DefaultMetricsListen
+	}
 	if c.Alerts.RepeatInterval == 0 {
 		c.Alerts.RepeatInterval = Duration(4 * time.Hour)
 	}
@@ -269,6 +272,14 @@ func (c *Config) Validate() (warnings []string, err error) {
 		}
 		if hb.Interval.D() < 10*time.Second {
 			add("monitor.heartbeat.interval: must be at least 10s")
+		}
+	}
+
+	if m := c.Monitor.Metrics; m != nil {
+		if w, err := CheckMetricsListen(m.Listen, m.AllowNonLoopback); err != nil {
+			add("monitor.metrics.listen: %v", err)
+		} else if w != "" {
+			warnings = append(warnings, "monitor.metrics: "+w)
 		}
 	}
 

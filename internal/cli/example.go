@@ -43,6 +43,14 @@ monitor:
   # heartbeat:
   #   url: { env: LK_HEARTBEAT_URL }
   #   interval: 1m
+  # Optional Prometheus endpoint (off unless this block is present). It serves the
+  # latest samples and the firing alerts on GET /metrics. It has no authentication
+  # and its labels can contain table names, so it listens on loopback only; any
+  # other address is refused unless allow_non_loopback is true (then put a
+  # firewall or an authenticating reverse proxy in front of it).
+  # metrics:
+  #   listen: 127.0.0.1:9187
+  #   allow_non_loopback: false
 
 alerts:
   channels:

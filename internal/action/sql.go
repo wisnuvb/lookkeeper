@@ -20,6 +20,10 @@ type Statement struct {
 	Session []Template
 	// Main is the statement itself.
 	Main Template
+	// After statements run on the same connection once Main succeeded (for
+	// example COMMENT ON ... to mark what Lockkeeper created). They are shown
+	// and hashed like the others.
+	After []Template
 	// Secrets supplies the values of the placeholders at apply time. It is
 	// never serialised and never part of the plan.
 	Secrets func() (map[string]string, error)
@@ -52,6 +56,11 @@ func (s *Statement) SQL() string {
 	}
 	b.WriteString(strings.TrimRight(s.Main.Text(), "; \n"))
 	b.WriteString(";")
+	for _, t := range s.After {
+		b.WriteString("\n")
+		b.WriteString(strings.TrimRight(t.Text(), "; \n"))
+		b.WriteString(";")
+	}
 	return b.String()
 }
 
@@ -88,6 +97,15 @@ func (s *Statement) Apply(ctx context.Context, c Conn) error {
 	}
 	if _, err := c.Exec(ctx, q); err != nil {
 		return fmt.Errorf("%s: %w", s.Key, err)
+	}
+	for _, t := range s.After {
+		q, err := t.Render(secrets)
+		if err != nil {
+			return fmt.Errorf("%s: %w", s.Key, err)
+		}
+		if _, err := c.Exec(ctx, q); err != nil {
+			return fmt.Errorf("%s: follow-up statement: %w", s.Key, err)
+		}
 	}
 	return nil
 }

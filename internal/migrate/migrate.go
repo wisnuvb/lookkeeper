@@ -99,7 +99,9 @@ type Names struct {
 func (n Names) Role() string { return "lk_" + n.MigrationID }
 
 // Publication is the per-database publication on the source.
-func (n Names) Publication(dbIndex int) string { return fmt.Sprintf("lk_%s_d%d", n.MigrationID, dbIndex) }
+func (n Names) Publication(dbIndex int) string {
+	return fmt.Sprintf("lk_%s_d%d", n.MigrationID, dbIndex)
+}
 
 // Slot is the replication slot of database dbIndex for a copy attempt.
 func (n Names) Slot(dbIndex, attempt int) string {
@@ -107,7 +109,9 @@ func (n Names) Slot(dbIndex, attempt int) string {
 }
 
 // Subscription is the per-database subscription on the target.
-func (n Names) Subscription(dbIndex int) string { return fmt.Sprintf("lk_%s_d%d", n.MigrationID, dbIndex) }
+func (n Names) Subscription(dbIndex int) string {
+	return fmt.Sprintf("lk_%s_d%d", n.MigrationID, dbIndex)
+}
 
 // Marker is written as a comment on the publication and the role so that
 // cleanup only removes objects that carry it.

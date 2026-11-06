@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.15
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.75.5
 	github.com/aws/smithy-go v1.28.8
+	github.com/go-sql-driver/mysql v1.10.1
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/spf13/cobra v1.10.2
 	go.yaml.in/yaml/v3 v3.0.6
@@ -17,6 +18,7 @@ require (
 )
 
 require (
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.15 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.7 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.10 // indirect

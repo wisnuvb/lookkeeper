@@ -34,8 +34,11 @@ const (
 	EmailNone     = "none"
 )
 
-// EnginePostgres is the only engine supported by the collectors so far.
-const EnginePostgres = "postgres"
+// Supported database engines.
+const (
+	EnginePostgres = "postgres"
+	EngineMySQL    = "mysql"
+)
 
 var (
 	awsRegionRe   = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]{1,2}$`)
@@ -113,9 +116,15 @@ func (c *Config) applyDefaults() {
 	}
 	for name, db := range c.Databases {
 		if db.Port == 0 {
-			db.Port = 5432
+			if db.Engine == EngineMySQL {
+				db.Port = 3306
+			} else {
+				db.Port = 5432
+			}
 		}
-		if db.Database == "" {
+		// Only Postgres needs a database to connect to; for MySQL an empty
+		// database means "none selected", which is all the collector needs.
+		if db.Database == "" && db.Engine == EnginePostgres {
 			db.Database = "postgres"
 		}
 		if db.TLS.Mode == "" {
@@ -196,11 +205,9 @@ func (c *Config) Validate() (warnings []string, err error) {
 			add("%s: name must match %s", p, nameRe)
 		}
 		switch db.Engine {
-		case EnginePostgres:
-		case "mysql":
-			add("%s.engine: mysql is not supported yet (the MySQL collector is planned for Phase 1 slice 2)", p)
+		case EnginePostgres, EngineMySQL:
 		default:
-			add("%s.engine: must be %q (got %q)", p, EnginePostgres, db.Engine)
+			add("%s.engine: must be %q or %q (got %q)", p, EnginePostgres, EngineMySQL, db.Engine)
 		}
 		if db.Host == "" {
 			add("%s.host: required", p)

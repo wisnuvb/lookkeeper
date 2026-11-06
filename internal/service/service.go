@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -38,6 +39,8 @@ type Deps struct {
 	HTTP     notify.HTTPDoer
 	// OpenPG opens a Postgres connection (default dbconn.OpenPG).
 	OpenPG func(ctx context.Context, spec dbconn.PGSpec) (*pgx.Conn, error)
+	// OpenMySQL opens a MySQL connection pool (default dbconn.OpenMySQL).
+	OpenMySQL func(ctx context.Context, spec dbconn.MySQLSpec) (*sql.DB, error)
 	// NewCollector overrides collector construction (tests).
 	NewCollector func(target string) collector.Collector
 	// RetrySleep overrides retry backoff sleeping (tests).
@@ -80,6 +83,9 @@ func New(cfg *config.Config, deps Deps) (*Service, error) {
 	}
 	if deps.NewCloudWatch == nil {
 		deps.NewCloudWatch = cloudwatch.NewSDK
+	}
+	if deps.OpenMySQL == nil {
+		deps.OpenMySQL = dbconn.OpenMySQL
 	}
 	rs, err := rules.ApplyOverrides(rules.Defaults(), cfg.Alerts.Rules)
 	if err != nil {

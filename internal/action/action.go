@@ -137,6 +137,19 @@ func renderTemplate(s string, val func(name string) string) string {
 	}
 }
 
+// RejectPlaceholder returns an error if any value contains the placeholder
+// delimiters. Names that come from a catalog or from the operator (a database
+// called x{{password}}) are quoted into templates; without this check such a
+// name would be replaced by the real secret when the template is rendered.
+func RejectPlaceholder(what string, values ...string) error {
+	for _, v := range values {
+		if strings.Contains(v, "{{") || strings.Contains(v, "}}") {
+			return fmt.Errorf("%s %q contains \"{{\" or \"}}\", which is reserved for secret placeholders in plans: refusing to plan it", what, v)
+		}
+	}
+	return nil
+}
+
 // QuoteIdent quotes a Postgres identifier.
 func QuoteIdent(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` }
 

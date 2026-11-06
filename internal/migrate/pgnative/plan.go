@@ -222,9 +222,40 @@ func subState(ctx context.Context, c action.Conn, name string) (exists, enabled,
 	return true, en != nil && *en, slot != nil, nil
 }
 
+// validateInput refuses names that could be mistaken for a secret placeholder
+// when a statement template is rendered at apply time (action.Template): a
+// database called x{{password}} must not receive the migration password.
+func validateInput(in PlanInput) error {
+	for _, s := range []struct {
+		role string
+		side Side
+	}{{"source", in.Source}, {"target", in.Target}} {
+		if err := action.RejectPlaceholder(s.role+" connection setting", s.side.Name, s.side.Host, s.side.User, s.side.Database, s.side.TLSMode, s.side.CAFile, s.side.Version); err != nil {
+			return err
+		}
+	}
+	if err := action.RejectPlaceholder("subscription peer setting", in.Peer.Host, in.Peer.SSLMode, in.Peer.SSLRootCert); err != nil {
+		return err
+	}
+	for _, d := range in.DBs {
+		if err := action.RejectPlaceholder("database name", d.Database); err != nil {
+			return err
+		}
+		for _, t := range append(append([]Table{}, d.Publish...), d.NeedFull...) {
+			if err := action.RejectPlaceholder("table name", t.Schema, t.Name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // BuildPlan builds the migration plan: what apply-source-changes does, then what
 // start does under the same approval. Everything is deterministic in the input.
 func BuildPlan(in PlanInput) (*action.Plan, error) {
+	if err := validateInput(in); err != nil {
+		return nil, err
+	}
 	if len(in.DBs) == 0 {
 		return nil, fmt.Errorf("no database to migrate")
 	}
@@ -415,6 +446,9 @@ func startActions(in PlanInput, names migrate.Names, db int, dbName string, atte
 // BuildAbortPlan stops consumption: it disables every subscription. The source's
 // slots and publications stay exactly as they are.
 func BuildAbortPlan(in PlanInput, migrationID string, withSubscriptions bool) (*action.Plan, error) {
+	if err := validateInput(in); err != nil {
+		return nil, err
+	}
 	names := migrate.Names{MigrationID: migrationID}
 	p := &action.Plan{
 		Kind: action.KindAbort, LockkeeperVer: in.LockkeeperVersion, MigrationID: migrationID,
@@ -457,6 +491,14 @@ type CleanupInput struct {
 // target, then slots, publications and the role on the source, each only if it
 // carries this migration's name and marker.
 func BuildCleanupPlan(in CleanupInput) (*action.Plan, error) {
+	if err := validateInput(in.PlanInput); err != nil {
+		return nil, err
+	}
+	for _, slots := range in.Slots {
+		if err := action.RejectPlaceholder("slot name", slots...); err != nil {
+			return nil, err
+		}
+	}
 	names := migrate.Names{MigrationID: in.MigrationID}
 	p := &action.Plan{
 		Kind: action.KindCleanup, LockkeeperVer: in.LockkeeperVersion, MigrationID: in.MigrationID,
@@ -564,6 +606,19 @@ type RecoverInput struct {
 // start steps again under a new slot. A slot is never reused for a new copy
 // (docs/PHASE3-NOTES.md 1.1 d3).
 func BuildRecoverPlan(in RecoverInput) (*action.Plan, error) {
+	if err := validateInput(in.PlanInput); err != nil {
+		return nil, err
+	}
+	for _, c := range in.TargetCreate {
+		if err := action.RejectPlaceholder("target database properties", c); err != nil {
+			return nil, err
+		}
+	}
+	for _, slots := range in.OldSlots {
+		if err := action.RejectPlaceholder("slot name", slots...); err != nil {
+			return nil, err
+		}
+	}
 	names := migrate.Names{MigrationID: in.MigrationID}
 	p := &action.Plan{
 		Kind: action.KindRecover, LockkeeperVer: in.LockkeeperVersion, MigrationID: in.MigrationID,

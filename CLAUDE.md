@@ -1,11 +1,15 @@
 # Lockkeeper — project context for Claude Code
 
-> Status: **Phase 1, slice 1 is implemented** (PostgreSQL monitoring: collector, alert engine,
-> Telegram/Slack, SQLite state, CLI `init`/`config validate`/`check`/`monitor run`/`alerts test`/
-> `slots list`). Spec approved by the owner on 2026-11-06. Not built yet: MySQL collector, email,
-> Prometheus export, CloudWatch reader (moved to slice 2), web UI and vault, migration (Phases 2-5).
+> Status (2026-11-06): **implemented and tested:** PostgreSQL and MySQL (8.0/8.4) monitoring, alert
+> engine, Telegram/Slack/email, SQLite state, optional Prometheus endpoint, optional CloudWatch
+> reader (**never run against real AWS**), `inventory` and `preflight pg` (read-only), CLI `init`,
+> `config validate`, `check`, `monitor run`, `alerts test`, `slots list`, `inventory`, `preflight pg`.
+> **In progress (branch `worktree-agent-a9effc6e5a45bf02c`, not merged):** Phase 3 migration
+> orchestrator; its spike proved the snapshot->slot handoff (see its `docs/PHASE3-NOTES.md`).
+> **Not built yet:** cutover and verification (Phase 4), MySQL migration (Phase 5), web UI + auth +
+> vault (Phase 1 slice 3). **Nothing has been validated against real RDS/Aurora.**
 > Run `make ci` (needs `staticcheck` and `govulncheck` in `$(go env GOPATH)/bin`) and
-> `make test-integration` (needs Docker) before committing.
+> `make test-integration` (needs Docker; `LK_TEST_PG_IMAGE`, `LK_TEST_MYSQL_IMAGE`) before committing.
 
 ## What this is
 

@@ -289,6 +289,10 @@ func TestTablesWithoutPrimaryKey(t *testing.T) {
 		{"identity full is covered", noPK(1, inventory.Table{Schema: "s", Name: "t", ReplicaIdentity: "full"}), "tables.no_pk.app", preflight.OK, []string{"already have a usable REPLICA IDENTITY"}, nil},
 		{"identity index is covered", noPK(1, inventory.Table{Schema: "s", Name: "t", ReplicaIdentity: "index"}), "tables.no_pk.app", preflight.OK, nil, nil},
 		{"mixed list counts only uncovered tables", noPK(2, events, inventory.Table{Schema: "s", Name: "t", ReplicaIdentity: "full"}), "tables.no_pk.app", preflight.Warn, []string{"1 table"}, nil},
+		{"an unlogged table without a key is not a replica-identity problem", func(in *Input) {
+			noPK(1, inventory.Table{Schema: "public", Name: "u", ReplicaIdentity: "default"})(in)
+			in.Source.Server.Databases[0].UnloggedTables = inventory.TableList{Total: 1, Items: []inventory.Table{{Schema: "public", Name: "u"}}}
+		}, "tables.no_pk.app", preflight.OK, []string{"unlogged"}, nil},
 		{"tables beyond the inventory cap are assumed to need action", noPK(50, inventory.Table{Schema: "s", Name: "t", ReplicaIdentity: "full"}), "tables.no_pk.app", preflight.Warn, []string{"49 tables"}, nil},
 	})
 }
@@ -393,7 +397,7 @@ func TestRoles(t *testing.T) {
 		}, "roles.owners", preflight.Warn, []string{"app_owner", "owns objects in app"}, []string{`CREATE ROLE "app_owner" NOLOGIN;`, "passwords"}},
 		{"database owner counts too", func(in *Input) {
 			in.Source.Server.Databases[0].Owner = "dbowner"
-		}, "roles.owners", preflight.Warn, []string{"dbowner", "database owner"}, nil},
+		}, "roles.owners", preflight.Warn, []string{"dbowner", "owns database app"}, nil},
 		{"truncated target role list is flagged", func(in *Input) {
 			in.Target.Server.Roles = []inventory.Role{{Name: "postgres"}}
 			in.Target.Server.RolesTotal = 5000

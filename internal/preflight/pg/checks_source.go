@@ -307,14 +307,23 @@ func checkSourceTables(in Input) []preflight.Finding {
 
 func noPKFindings(d inventory.Database) []preflight.Finding {
 	id := "tables.no_pk." + d.Name
+	// Unlogged tables are never replicated, so a replica identity is moot for
+	// them; they have their own finding.
+	unlogged := map[string]bool{}
+	for _, t := range d.UnloggedTables.Items {
+		unlogged[t.Schema+"."+t.Name] = true
+	}
 	var need []inventory.Table
 	covered := 0
 	for _, t := range d.TablesWithoutPK.Items {
-		if t.ReplicaIdentity == "full" || t.ReplicaIdentity == "index" {
+		switch {
+		case unlogged[t.Schema+"."+t.Name]:
+			// not replicated at all
+		case t.ReplicaIdentity == "full" || t.ReplicaIdentity == "index":
 			covered++
-			continue
+		default:
+			need = append(need, t)
 		}
-		need = append(need, t)
 	}
 	// The inventory caps its list: tables beyond the cap are assumed to need
 	// action, which is the safe reading.
@@ -322,8 +331,11 @@ func noPKFindings(d inventory.Database) []preflight.Finding {
 	needTotal := len(need) + unlisted
 	if needTotal == 0 {
 		msg := fmt.Sprintf("database %s: every table has a primary key", d.Name)
-		if covered > 0 {
+		switch {
+		case covered > 0:
 			msg = fmt.Sprintf("database %s: %s without a primary key already have a usable REPLICA IDENTITY (full or index)", d.Name, plural(covered, "table"))
+		case d.TablesWithoutPK.Total > 0:
+			msg = fmt.Sprintf("database %s: the only tables without a primary key are unlogged ones, which are not replicated at all (see the unlogged finding)", d.Name)
 		}
 		return []preflight.Finding{finding(id, areaTables, preflight.OK, msg, "")}
 	}
@@ -338,7 +350,7 @@ func noPKFindings(d inventory.Database) []preflight.Finding {
 		fmt.Sprintf("database %s: %s without a primary key and without a replica identity; UPDATE and DELETE on them fail once they are published and would not replicate: %s",
 			d.Name, plural(needTotal, "table"), tableList(need, needTotal)),
 		"Either add a primary key, or set REPLICA IDENTITY FULL (works without a key but logs whole old rows, so write volume and WAL grow), or USING INDEX on a unique, non-null index. For example (connected to "+d.Name+"): "+strings.Join(stmts, " ")+
-			" REPLICA IDENTITY FULL is a SOURCE change that takes a table lock; the migration will require explicit confirmation before applying it. "+sourceChangeNote)}
+			" ALTER TABLE takes a table lock, so run it in a quiet moment. "+sourceChangeNote)}
 }
 
 func unloggedFindings(d inventory.Database) []preflight.Finding {

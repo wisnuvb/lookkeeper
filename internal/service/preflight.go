@@ -34,8 +34,8 @@ type DiscoveryOptions struct {
 	MaxDatabases int
 }
 
-func (o DiscoveryOptions) inventory(databases []string) inventory.Options {
-	return inventory.Options{Databases: databases, MaxDatabases: o.MaxDatabases}
+func (s *Service) inventoryOptions(o DiscoveryOptions, databases []string) inventory.Options {
+	return inventory.Options{Databases: databases, MaxDatabases: o.MaxDatabases, Log: s.log}
 }
 
 // requirePostgresEngine refuses connections of another engine for Postgres-only
@@ -68,6 +68,7 @@ func (s *Service) openInventoryDB(ctx context.Context, name, database string) (*
 	if database != "" {
 		spec.Database = database
 	}
+	s.log.Debug("opening read-only session", "connection", name, "host", spec.Host, "port", spec.Port, "database", spec.Database, "user", spec.User)
 	conn, err := s.deps.OpenPG(ctx, spec)
 	if err != nil {
 		return nil, s.redactErr(err)
@@ -107,7 +108,7 @@ func (s *Service) Inventory(ctx context.Context, source string, opts DiscoveryOp
 		return nil, fmt.Errorf("connect to %s: %w", source, err)
 	}
 	defer pfCloseConn(conn)
-	srv, err := inventory.Collect(ctx, conn, s.inventoryOpener(source), opts.inventory(opts.Databases))
+	srv, err := inventory.Collect(ctx, conn, s.inventoryOpener(source), s.inventoryOptions(opts, opts.Databases))
 	if err != nil {
 		return nil, s.redactErr(err)
 	}
@@ -133,7 +134,7 @@ func (s *Service) preflightSide(ctx context.Context, name string, databases []st
 	sd.ConnectLatency = time.Since(start)
 
 	sd.Facts = pfpg.GatherFacts(ctx, conn)
-	srv, err := inventory.Collect(ctx, conn, s.inventoryOpener(name), opts.inventory(databases))
+	srv, err := inventory.Collect(ctx, conn, s.inventoryOpener(name), s.inventoryOptions(opts, databases))
 	if err != nil {
 		if errors.Is(err, inventory.ErrTooManyDatabases) {
 			return sd, fmt.Errorf("%s: %w", name, err)

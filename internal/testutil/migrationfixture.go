@@ -58,6 +58,7 @@ func SeedMigrationSource(t testing.TB, p *PG) {
 	app := p.AdminDB(t, FixtureAppDB)
 	for _, q := range []string{
 		"CREATE EXTENSION pg_trgm",
+		"CREATE EXTENSION hstore",
 		"CREATE TABLE accounts (id serial PRIMARY KEY, email text NOT NULL)",
 		"INSERT INTO accounts (email) SELECT 'user' || g || '@" + RowCanary + ".example' FROM generate_series(1, 50) g",
 		"CREATE TABLE events (ts timestamptz DEFAULT now(), payload text)",

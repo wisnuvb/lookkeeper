@@ -207,13 +207,21 @@ func checkRoles(in Input) []preflight.Finding {
 	if src == nil || tgt == nil {
 		return nil
 	}
-	owners := map[string][]string{}
+	// Per role: databases where it owns objects, and databases it owns.
+	type ownership struct{ objects, databases []string }
+	owners := map[string]*ownership{}
+	of := func(role string) *ownership {
+		if owners[role] == nil {
+			owners[role] = &ownership{}
+		}
+		return owners[role]
+	}
 	for _, d := range src.Databases {
 		for _, o := range d.Owners {
-			owners[o] = append(owners[o], d.Name)
+			of(o).objects = append(of(o).objects, d.Name)
 		}
 		if d.Owner != "" && !strings.HasPrefix(d.Owner, "pg_") {
-			owners[d.Owner] = append(owners[d.Owner], d.Name+" (database owner)")
+			of(d.Owner).databases = append(of(d.Owner).databases, d.Name)
 		}
 	}
 	var missing []string
@@ -236,26 +244,21 @@ func checkRoles(in Input) []preflight.Finding {
 	}
 	detail := make([]string, 0, len(missing))
 	for _, m := range missing {
-		detail = append(detail, fmt.Sprintf("%s (owns objects in %s)", m, strings.Join(dedupe(owners[m]), ", ")))
+		var what []string
+		if o := owners[m]; len(o.objects) > 0 {
+			what = append(what, "objects in "+strings.Join(o.objects, ", "))
+		}
+		if o := owners[m]; len(o.databases) > 0 {
+			what = append(what, "database "+strings.Join(o.databases, ", "))
+		}
+		detail = append(detail, fmt.Sprintf("%s (owns %s)", m, strings.Join(what, " and ")))
 	}
 	note := ""
 	if tgt.RolesTotal > len(tgt.Roles) {
 		note = " The target has more roles than were listed, so some of these may exist after all."
 	}
 	return []preflight.Finding{finding("roles.owners", areaRoles, preflight.Warn,
-		fmt.Sprintf("%s that own source objects do not exist on the target: %s.%s", plural(len(missing), "role"), nameList(detail, maxNamesPerMessage), note),
+		fmt.Sprintf("%d role(s) that own source objects do not exist on the target: %s.%s", len(missing), nameList(detail, maxNamesPerMessage), note),
 		"Create the roles on the target before the schema is restored, for example: "+strings.Join(stmts, " ")+
 			" (use LOGIN and a password only if applications connect as them; passwords of source roles cannot be read from RDS, so set new ones). The bulk copy tool can also copy role definitions (ADR 0002); whether that works against RDS has not been verified.")}
-}
-
-func dedupe(in []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, s := range in {
-		if !seen[s] {
-			seen[s] = true
-			out = append(out, s)
-		}
-	}
-	return out
 }

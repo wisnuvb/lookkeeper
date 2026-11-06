@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -50,6 +51,8 @@ type Options struct {
 	TopTables int
 	// ListCap caps each per-database table list (the totals stay exact).
 	ListCap int
+	// Log, if set, receives debug lines about progress (database names only).
+	Log *slog.Logger
 	// PerDatabaseTimeout bounds the inspection of one database, including
 	// connecting to it. Default DefaultPerDatabaseTimeout.
 	PerDatabaseTimeout time.Duration
@@ -296,6 +299,9 @@ func selectDatabases(s *Server, all []dbRow, opts Options) ([]dbRow, error) {
 // inspect gathers the detail of one database. It never returns an error: a
 // failure is recorded on the database so the others can still be reported.
 func inspect(ctx context.Context, primary DB, open Opener, primaryDB string, d dbRow, opts Options) Database {
+	if opts.Log != nil {
+		opts.Log.Debug("inventory: inspecting database", "database", d.Name, "own_connection", d.Name != primaryDB)
+	}
 	out := d.Database
 	out.Extensions = []Extension{}
 	out.LargestTables = []Table{}

@@ -97,7 +97,7 @@ func TestCollectSourceFixture(t *testing.T) {
 	if d.Owner != testutil.FixtureOwnerRole || d.Encoding != "UTF8" || d.SizeBytes <= 0 {
 		t.Errorf("database facts: %+v", d)
 	}
-	if len(d.Extensions) < 2 || !hasExt(d, "pg_trgm") || !hasExt(d, "plpgsql") {
+	if len(d.Extensions) < 3 || !hasExt(d, "hstore") || !hasExt(d, "pg_trgm") || !hasExt(d, "plpgsql") {
 		t.Errorf("extensions: %+v", d.Extensions)
 	}
 	// accounts, events, scratch, measurements (partitioned): 4 tables, 2 partitions.

@@ -64,6 +64,8 @@ func GatherFacts(ctx context.Context, db inventory.DB) Facts {
 		f.AvailableExtensions = avail
 	}
 
+	// backend_type is NULL for sessions of other users that this role cannot
+	// see into, so those are matched by having a database.
 	// The statement text is matched on the server and only counts come back
 	// (threat T10). Sessions of other users show '<insufficient privilege>'
 	// unless the role has pg_read_all_stats (pg_monitor), which we report.
@@ -72,7 +74,8 @@ func GatherFacts(ctx context.Context, db inventory.DB) Facts {
 		SELECT count(*) FILTER (WHERE query ~* '^\s*(create|alter|drop|truncate|reindex|cluster|comment|grant|revoke)\M'),
 		       count(*) FILTER (WHERE query = '<insufficient privilege>')
 		FROM pg_stat_activity
-		WHERE pid <> pg_backend_pid() AND backend_type = 'client backend'
+		WHERE pid <> pg_backend_pid() AND datname IS NOT NULL
+		  AND (backend_type IS NULL OR backend_type = 'client backend')
 		  AND (state IN ('active', 'idle in transaction') OR query = '<insufficient privilege>')`).Scan(&ddl, &hidden); err == nil {
 		f.DDLSessions, f.HiddenSessions = &ddl, hidden
 	}

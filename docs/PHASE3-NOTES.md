@@ -175,3 +175,49 @@ subscriptions, slots, publications and role, each checked by name and marker.
   also be allowed from `caught_up` after Phase 4 only; whether to add the SPEC `migrations:` config block;
   whether `abort` of a running migration should be allowed to stop the driver itself (now it refuses and
   asks you to stop it); the policy for an optional `guardrail.action: drop_slot` (not built).
+
+## 4. Security review: fixed
+
+An independent review of this branch led to these changes (each has a test that fails without it):
+
+- **M1 Config edited after approval.** Execution connects through the live configuration, while the stored
+  plan only fixes what was shown. `loadMigration` (used by apply, start/resume, status, abort, cleanup) now
+  compares host, port, user, database, TLS mode and CA file of the source and target with the stored plan
+  and refuses before any connection; the server versions are compared after connecting (start/resume/apply).
+  The CA file is now part of the displayed (and hashed) copy command line.
+- **M2 Subscription sslmode** is a whitelist: verify-full and verify-ca always; require and disable only for a
+  loopback peer or with `tls.allow_insecure`; allow, prefer and unknown strings are refused at plan time.
+- **M3 Tool output in persisted errors.** pg_restore and pgcopydb quote rows (`DETAIL: Failing row...`,
+  `CONTEXT: COPY t, line N`). A failed tool now yields a `runner.ToolError` whose text is the tool, the exit
+  status and the log path only; that is what reaches `audit_events`, `steps.error`, `failed_reason` and
+  `actions.error`. A tail with the row-quoting lines removed is printed to the terminal only. The raw logs
+  stay under `migrations/<id>/logs` (0700) for diagnosis; **cleanup deletes the logs and work directories
+  together with the generated password file**, and the cleanup plan says so.
+- **L1** A target that already has tables (or a stray slot or subscription with the migration's name) when
+  this migration never started a copy of that database is a hard error ("refusing to plan a DROP DATABASE"),
+  not a recovery plan. Recovery is only for a copy Lockkeeper itself started (a recorded copy intent).
+- **L2** abort and cleanup take the driver lock before reading the state and building the plan.
+- **L3** Every plan builder refuses names that contain `{{` or `}}` (a database called `x{{password}}` would
+  have received the real password when the template was rendered).
+- **L6** start/resume end with a loud warning, naming the status/abort/cleanup commands and the retained WAL
+  when known, whenever a slot of the migration is still on the source. Informational: nothing is dropped.
+  (It is not printed when the command stops before it has connected, for example on a config edit refusal.)
+
+## 5. Known gaps from the security review (not fixed, on purpose)
+
+- **L4** The ownership marker (`COMMENT ON ROLE/PUBLICATION`) is a separate statement after the `CREATE`: a
+  crash between the two leaves an object without its marker, which every later step then refuses to touch
+  (safe, but stuck until removed by hand).
+- **L5** The read-only observations of the driver (`Observe`, `Progress`, the slot listings for recovery,
+  cleanup and the exit warning) use the write-capable session opener, the same as the actions. Nothing writes
+  through them, but the session policy does not enforce it. (`migrate status` itself uses read-only sessions.)
+- **L7** `action.Approval` is a plain struct: anything in the process can construct one. The real gate is the
+  `Approver` callback (`--plan-hash` or the typed phrase) plus `Executor.Authorize` checking the hash; a
+  compromised Lockkeeper process is outside the threat model.
+- **L8** The state database has no integrity protection against someone who can write the file: `INSERT OR
+  REPLACE`, `DROP TRIGGER` and a replaced file bypass the append-only audit triggers. The hash check of stored
+  plans detects edits of the plan, not of the audit trail.
+- Speculative, not built: the per-migration role has no `VALID UNTIL`; tools have no `Pdeathsig`, so an
+  orphaned pgcopydb can outlive a SIGKILLed driver (the lock is released by the kernel, the tool is not);
+  stale run directories (passfiles) are swept only at the next `Begin`; a backslash in a database name with
+  `standard_conforming_strings=off` is not handled in the subscription conninfo literal.

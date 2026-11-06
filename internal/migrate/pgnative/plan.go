@@ -26,8 +26,10 @@ type Side struct {
 	// Database is the database of the configured connection; cluster-wide
 	// actions (create a role, drop a database) run through it.
 	Database string
-	Version  string
-	Major    int
+	// TLSMode is the configured sslmode (shown in the copy command line).
+	TLSMode string
+	Version string
+	Major   int
 }
 
 // adminDB is the database used for cluster-wide statements.
@@ -72,12 +74,14 @@ type PlanInput struct {
 	Peer              Peer
 	// DBs is the databases in plan order (sorted by name); a database's index in
 	// the migration is its position + 1.
-	DBs        []DBFacts
-	Copier     migrate.Copier
+	DBs    []DBFacts
+	Copier migrate.Copier `json:"-"`
+	// CopierKind names the Copier so a stored input can be rebuilt.
+	CopierKind string
 	TableJobs  int
 	IndexJobs  int
 	NoOwner    bool
-	Password   PasswordFile
+	Password   PasswordFile `json:"-"`
 	ExtraNotes []string
 }
 
@@ -361,8 +365,8 @@ func startActions(in PlanInput, names migrate.Names, db int, dbName string, atte
 		sessions = []action.Template{"SET log_statement = 'none'", "SET log_min_duration_statement = -1", "SET log_min_error_statement = 'panic'"}
 	}
 	src := migrate.CopyInput{
-		Source:     migrate.Endpoint{Host: in.Peer.Host, Port: in.Peer.Port, Database: dbName, User: in.Source.User, TLSMode: in.Peer.SSLMode},
-		Target:     migrate.Endpoint{Host: in.Target.Host, Port: in.Target.Port, Database: dbName, User: in.Target.User, TLSMode: in.Peer.SSLMode},
+		Source:     migrate.Endpoint{Host: in.Source.Host, Port: in.Source.Port, Database: dbName, User: in.Source.User, TLSMode: in.Source.TLSMode},
+		Target:     migrate.Endpoint{Host: in.Target.Host, Port: in.Target.Port, Database: dbName, User: in.Target.User, TLSMode: in.Target.TLSMode},
 		SnapshotID: "<snapshot id from the slot>", WorkDir: "<private work directory>", TableJobs: in.TableJobs, IndexJobs: in.IndexJobs, NoOwner: in.NoOwner,
 	}
 	return []action.Action{
@@ -407,7 +411,7 @@ func startActions(in PlanInput, names migrate.Names, db int, dbName string, atte
 
 // BuildAbortPlan stops consumption: it disables every subscription. The source's
 // slots and publications stay exactly as they are.
-func BuildAbortPlan(in PlanInput, migrationID string) (*action.Plan, error) {
+func BuildAbortPlan(in PlanInput, migrationID string, withSubscriptions bool) (*action.Plan, error) {
 	names := migrate.Names{MigrationID: migrationID}
 	p := &action.Plan{
 		Kind: action.KindAbort, LockkeeperVer: in.LockkeeperVersion, MigrationID: migrationID,
@@ -419,6 +423,9 @@ func BuildAbortPlan(in PlanInput, migrationID string) (*action.Plan, error) {
 	}
 	for i, d := range in.DBs {
 		p.Databases = append(p.Databases, d.Database)
+		if !withSubscriptions {
+			continue // no subscription can exist yet: nothing on the target to stop
+		}
 		sub := names.Subscription(i + 1)
 		p.Actions = append(p.Actions, &action.Statement{
 			Key: IDAbortSubscription(i + 1), At: action.PhaseAbort, Where: in.tgtEP(d.Database), Changes: true,

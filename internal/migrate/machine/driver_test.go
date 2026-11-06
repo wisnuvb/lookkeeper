@@ -127,7 +127,7 @@ func (w *fakeWorld) CreateSubscription(_ context.Context, db, attempt int) error
 	return nil
 }
 
-func (w *fakeWorld) EnableSubscription(_ context.Context, db int) error {
+func (w *fakeWorld) EnableSubscription(_ context.Context, db, _ int) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.subs[db] == nil {

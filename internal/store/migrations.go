@@ -39,6 +39,7 @@ type Migration struct {
 	Databases    []string
 	PlanHash     string
 	PlanJSON     string
+	InputJSON    string
 	ApprovedHash string
 
 	LeaseOwner string
@@ -48,7 +49,7 @@ type Migration struct {
 }
 
 const migrationColumns = `id, state, failed_from, failed_step, failed_resumable, failed_reason,
-	source_name, target_name, databases, plan_hash, plan_json, approved_hash,
+	source_name, target_name, databases, plan_hash, plan_json, input_json, approved_hash,
 	lease_owner, lease_until, created_at, updated_at`
 
 type scanner interface{ Scan(dest ...any) error }
@@ -59,7 +60,7 @@ func scanMigration(r scanner) (Migration, error) {
 	var resumable int
 	var lease, created, updated int64
 	if err := r.Scan(&m.ID, &m.State, &m.FailedFrom, &m.FailedStep, &resumable, &m.FailedReason,
-		&m.SourceName, &m.TargetName, &dbs, &m.PlanHash, &m.PlanJSON, &m.ApprovedHash,
+		&m.SourceName, &m.TargetName, &dbs, &m.PlanHash, &m.PlanJSON, &m.InputJSON, &m.ApprovedHash,
 		&m.LeaseOwner, &lease, &created, &updated); err != nil {
 		return Migration{}, err
 	}
@@ -81,9 +82,9 @@ func (s *Store) CreateMigration(ctx context.Context, m Migration, now time.Time)
 	}
 	dbs, _ := json.Marshal(m.Databases)
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO migrations (id, state, source_name, target_name, databases, plan_hash, plan_json, created_at, updated_at)
-		VALUES (?, 'draft', ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
-		m.ID, m.SourceName, m.TargetName, string(dbs), m.PlanHash, m.PlanJSON, now.UnixMilli(), now.UnixMilli())
+		INSERT INTO migrations (id, state, source_name, target_name, databases, plan_hash, plan_json, input_json, created_at, updated_at)
+		VALUES (?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+		m.ID, m.SourceName, m.TargetName, string(dbs), m.PlanHash, m.PlanJSON, m.InputJSON, now.UnixMilli(), now.UnixMilli())
 	if err != nil {
 		return Migration{}, false, fmt.Errorf("create migration: %w", err)
 	}

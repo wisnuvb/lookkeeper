@@ -25,6 +25,7 @@ CREATE TABLE migrations (
 	databases        TEXT NOT NULL,
 	plan_hash        TEXT NOT NULL UNIQUE,
 	plan_json        TEXT NOT NULL,
+	input_json       TEXT NOT NULL DEFAULT '',
 	approved_hash    TEXT NOT NULL DEFAULT '',
 	lease_owner      TEXT NOT NULL DEFAULT '',
 	lease_until      INTEGER NOT NULL DEFAULT 0,

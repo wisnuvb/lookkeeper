@@ -61,7 +61,7 @@ type World interface {
 	// It returns only after all of that finished successfully.
 	Copy(ctx context.Context, db, attempt int) error
 	CreateSubscription(ctx context.Context, db, attempt int) error
-	EnableSubscription(ctx context.Context, db int) error
+	EnableSubscription(ctx context.Context, db, attempt int) error
 	Progress(ctx context.Context, db, attempt int) (Progress, error)
 }
 
@@ -467,7 +467,7 @@ func (d *Driver) advance(ctx context.Context, id string, db int, name string) er
 		o.SubExists = true
 	}
 	if !o.SubEnabled {
-		if err := d.effect(ctx, id, name, "subscription_enable", attempt, func() error { return d.world.EnableSubscription(ctx, db) }); err != nil {
+		if err := d.effect(ctx, id, name, "subscription_enable", attempt, func() error { return d.world.EnableSubscription(ctx, db, attempt) }); err != nil {
 			return err
 		}
 	}

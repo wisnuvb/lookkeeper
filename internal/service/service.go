@@ -26,6 +26,7 @@ import (
 	"github.com/wisnuvb/lockkeeper/internal/collector/pg"
 	"github.com/wisnuvb/lockkeeper/internal/config"
 	"github.com/wisnuvb/lockkeeper/internal/dbconn"
+	toolrunner "github.com/wisnuvb/lockkeeper/internal/migrate/runner"
 	"github.com/wisnuvb/lockkeeper/internal/redact"
 	"github.com/wisnuvb/lockkeeper/internal/secret"
 )
@@ -50,6 +51,11 @@ type Deps struct {
 	// NewCloudWatch returns the CloudWatch API for a region (default
 	// cloudwatch.NewSDK, which uses the standard AWS credential chain).
 	NewCloudWatch func(region string) cloudwatch.API
+	// Launcher starts external tools for migrations (default: run them on this
+	// machine). Tests substitute a containerised one.
+	Launcher toolrunner.Launcher
+	// Version is the Lockkeeper version recorded in migration plans.
+	Version string
 }
 
 // Service implements Lockkeeper's use cases.
@@ -86,6 +92,12 @@ func New(cfg *config.Config, deps Deps) (*Service, error) {
 	}
 	if deps.OpenMySQL == nil {
 		deps.OpenMySQL = dbconn.OpenMySQL
+	}
+	if deps.Launcher == nil {
+		deps.Launcher = toolrunner.Local{}
+	}
+	if deps.Version == "" {
+		deps.Version = "dev"
 	}
 	rs, err := rules.ApplyOverrides(rules.Defaults(), cfg.Alerts.Rules)
 	if err != nil {

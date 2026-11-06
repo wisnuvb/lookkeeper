@@ -1,0 +1,54 @@
+# systemd unit for the Lockkeeper monitor.
+#
+# Install:
+#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin lockkeeper
+#   sudo install -d -m 750 -o root -g lockkeeper /etc/lockkeeper
+#   sudo install -m 640 -o root -g lockkeeper lockkeeper.yaml /etc/lockkeeper/lockkeeper.yaml
+#   sudo install -m 600 -o root -g root env /etc/lockkeeper/env     # LK_..._PASSWORD=... lines
+#   sudo install -m 755 lockkeeper /usr/local/bin/lockkeeper
+#   sudo cp deploy/lockkeeper.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#   sudo systemctl enable --now lockkeeper
+#
+# Set `store.path: /var/lib/lockkeeper/lockkeeper.db` in the config (StateDirectory below
+# creates that directory). Secrets live only in the root-owned env file.
+#
+# NOTE: this unit has not yet been tested on a real systemd host.
+
+[Unit]
+Description=Lockkeeper database monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lockkeeper
+Group=lockkeeper
+EnvironmentFile=/etc/lockkeeper/env
+ExecStart=/usr/local/bin/lockkeeper -c /etc/lockkeeper/lockkeeper.yaml --log-format json monitor run
+Restart=on-failure
+RestartSec=5s
+# Lockkeeper flushes queued notifications on SIGTERM; give it time.
+TimeoutStopSec=40s
+StateDirectory=lockkeeper
+StateDirectoryMode=0700
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

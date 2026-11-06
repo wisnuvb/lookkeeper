@@ -1,7 +1,11 @@
 # Lockkeeper — project context for Claude Code
 
-> Status: **specification stage. No code yet.** Do not start implementation until the owner has
-> approved `docs/SPEC.md` (see "Open decisions" below).
+> Status: **Phase 1, slice 1 is implemented** (PostgreSQL monitoring: collector, alert engine,
+> Telegram/Slack, SQLite state, CLI `init`/`config validate`/`check`/`monitor run`/`alerts test`/
+> `slots list`). Spec approved by the owner on 2026-11-06. Not built yet: MySQL collector, email,
+> Prometheus export, CloudWatch reader (moved to slice 2), web UI and vault, migration (Phases 2-5).
+> Run `make ci` (needs `staticcheck` and `govulncheck` in `$(go env GOPATH)/bin`) and
+> `make test-integration` (needs Docker) before committing.
 
 ## What this is
 
@@ -108,10 +112,23 @@ collector and email notifier follow within Phase 1.
 - When unsure between two approaches: state the trade-off briefly and recommend one. Don't guess
   silently. Mark anything unverified as unverified.
 
+## Things learned while building slice 1 (keep in mind)
+
+- **A read-only session is not a security boundary.** `default_transaction_read_only=on` does not stop
+  a role that has the privilege from creating/dropping replication slots. The least-privilege role
+  (`LOGIN` + `pg_monitor`) is the boundary; `pg.AuditRole` warns otherwise. Without `pg_monitor`,
+  other users' sessions are invisible and metrics silently read 0.
+- **Rules whose meaning is a duration need history** (`Rule.NeedsHistory`, e.g. slot inactive for 10
+  minutes). The one-shot `check` skips them and says so; ignoring their `for` gave a false CRITICAL.
+- An incomplete collection must never clear active alerts (`Engine.Eval(..., complete)`).
+- `go.mod` pins `toolchain go1.27.3`: go1.27.1 had 9 reachable stdlib vulnerabilities.
+- The e2e test (`internal/e2e`) runs the real binary and scans `ps`, logs and the state DB for canary
+  secrets. Keep it green; extend it when adding anything that handles a secret.
+
 ## Local environment notes (2026-11-06)
 
-Go 1.27.1 and Docker are installed. `staticcheck` and `pgcopydb` are **not** installed locally.
-Working directory is not yet a git repository.
+Go 1.27.x and Docker are installed; `staticcheck` and `govulncheck` were installed with `go install`
+into `~/go/bin`. `pgcopydb` is **not** installed locally (needed from Phase 3).
 
 ## Decisions made on 2026-11-06
 

@@ -10,8 +10,9 @@ deployable as one binary to a VPS/dedicated server, and may later be open-source
 
 ## Decision
 
-Implement in Go. Minimum toolchain: the Go version required by our newest dependency
-(`jackc/pgx/v5` v5.11.0 declares `go 1.25.0`; local toolchain is Go 1.27.1).
+Implement in Go. The `go` directive is whatever our dependencies require (currently 1.26.0), and `go.mod` pins a
+patched `toolchain` (go1.27.3): `govulncheck` found 9 reachable standard-library vulnerabilities on
+go1.27.1. `govulncheck` runs in CI so a stale toolchain fails the build.
 
 ## Alternatives considered
 

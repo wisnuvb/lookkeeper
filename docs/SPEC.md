@@ -58,8 +58,13 @@ useful first release is therefore a slice of Phase 1, read-only, with no source 
 - CLI: `init`, `config validate`, `check` (one-shot, exit code by severity), `monitor run` (daemon),
   `alerts test`, `slots list`.
 
-The slice also lays the **service layer and API shape** (ADR 0005) so the web UI later needs no
-rewrite, and an **optional CloudWatch reader** for RDS free storage (owner approved).
+The slice also lays the **service layer** (ADR 0005) so the web UI later needs no rewrite.
+
+**Status (2026-11-06): this slice is implemented and tested** (unit, integration on Postgres 14 and
+17, and an end-to-end test of the real binary). The optional **CloudWatch reader** (owner approved)
+was moved to slice 2: it cannot be validated without real AWS credentials, and shipping
+integration code that has only ever run against fakes would not meet the production bar. It will be
+built together with a manual validation against a non-production RDS instance.
 
 **Phase 1, slice 2:** remaining Postgres metrics (bloat, autovacuum, temp files, checkpoints,
 `pg_stat_statements`), **MySQL collector**, email notifier, optional Prometheus export.
@@ -84,7 +89,7 @@ tooling does.
 | 1 | CLI + YAML config | `config validate`, `check` (one-shot), `monitor run` (daemon) |
 | 1 | Service layer + JSON/SSE API | CLI and web are thin front ends over one service (ADR 0005) |
 | 1 | Dynamic connection registry | connections have no role; source/target chosen per migration or monitor target |
-| 1 | CloudWatch reader (optional) | RDS `FreeStorageSpace` (and CPU/IOPS later) via AWS SDK v2; read-only IAM |
+| 1 (slice 2) | CloudWatch reader (optional) | RDS `FreeStorageSpace` (and CPU/IOPS later) via AWS SDK v2; read-only IAM; needs validation against real AWS |
 | 1 | Web UI (slice 3) | `lockkeeper serve`; auth, roles, CSRF; embedded static assets; UI designed with the `ui-ux-pro-max` skill first |
 | 2 | Postgres pre-flight | section 8.1 |
 | 3 | Postgres migrator | state machine (section 9); pgcopydb for bulk copy, native logical replication for CDC (ADR 0002) |
@@ -307,7 +312,7 @@ condition holds for `for` duration; resolves with hysteresis; per-rule cooldown 
 | `pg.query.longest_s` | `pg_stat_activity` (active) | > 300 | > 1800 |
 | `pg.locks.blocked_s` | `pg_locks` + activity | > 30 | > 300 |
 | `pg.slot.retained_wal_bytes` (per slot) | `pg_replication_slots` + `pg_wal_lsn_diff` | > 5 GiB | > 20 GiB or > 20% of `disk_total_gb` if set |
-| `pg.slot.active` (per slot, 1/0) | `pg_replication_slots.active` | = 0 for 10m | = 0 for 60m |
+| `pg.slot.active` (per slot, 1/0) | `pg_replication_slots.active` | = 0 for 10m | = 0 for 60m (needs history: skipped by one-shot `check`, evaluated by `monitor run`) |
 | `pg.repl.lag_bytes` / `lag_s` | `pg_stat_replication` | > 256 MiB / 60s | > 2 GiB / 600s |
 | `pg.xid.age` | `age(datfrozenxid)` | > 750M | > 1.5B (wraparound at ≈ 2.1B) |
 | `pg.mxid.age` | `mxid_age(datminmxid)` | > 750M | > 1.5B |
@@ -394,7 +399,7 @@ Assets: production data, database credentials, replication slot health, integrit
 |---|---|---|
 | T1 | Credential leak via logs, error messages, `ps`, state files | ADR 0004: references only, `secret.Value` type, redaction writer, passfile for children, canary test |
 | T2 | Network MITM / sniffing between tool and DB | TLS required, `verify-full` default, warning banner on weaker modes |
-| T3 | Tool modifies or damages the source accidentally | read-only sessions, dry-run, plan hash, typed confirmations, audit log of every source-mutating action, no source deletes, test helper refuses non-loopback DBs |
+| T3 | Tool modifies or damages the source accidentally | **least-privilege role (`LOGIN` + `pg_monitor`) is the real boundary**; read-only sessions are defence in depth only (verified: a read-only session can still create a replication slot if the role may), so `AuditRole` warns about superuser/`rds_superuser`/`REPLICATION`/missing `pg_monitor`; dry-run, plan hash, typed confirmations and an audit log for every future source-mutating action; no source deletes; test helper refuses non-loopback DBs |
 | T4 | Unread slot fills source disk (outage) | slot monitoring, guardrail rules, alert-first policy, runbook for slot cleanup |
 | T5 | Silent data loss in CDC or in the snapshot→slot handoff | native logical replication (not pgcopydb `--follow`), mandatory verification gate, overlapping-transaction + concurrent-write regression tests, swappable engine |
 | T13 | Source password stored in target `pg_subscription` / echoed in target logs | dedicated short-lived migration user, per-migration password, dropped at cleanup, logging pre-flight warning (ADR 0004 item 7) |
@@ -472,4 +477,5 @@ last ~5 weeks.
 | MySQL `CHANGE REPLICATION SOURCE TO` | Exists in 8.4 manual; option-level details (SSL, auto-position) not read |
 | pgcopydb `--snapshot` | Documented: `clone --snapshot` re-uses an already-exported snapshot; `pgcopydb snapshot` exports one; with `--follow` pgcopydb itself creates the slot via `CREATE_REPLICATION_SLOT`. **Not verified:** that it accepts a snapshot exported by a different process (first item of the Phase 3 spike) |
 | Not verified | RDS Postgres facts the owner supplied (taken as given); mydumper behaviour with RDS; pgcopydb `NOTICE` content; whether #1044 has a fix released after v0.18; exact IAM policy for the CloudWatch reader; mydumper/RDS interplay |
+| Dependencies actually in use (go.mod, 2026-11-06) | `pgx/v5` v5.12.0, `go.yaml.in/yaml/v3` v3.0.6 (the maintained fork; `gopkg.in/yaml.v3`/`go-yaml/yaml` was archived 2025-04-01), `spf13/cobra` v1.10.2, `modernc.org/sqlite` v1.61.1, `golang.org/x/term`. `go.mod` has `go 1.26.0` (required by dependencies) and pins `toolchain go1.27.3`: with go1.27.1 `govulncheck` reported 9 standard-library vulnerabilities reachable from our code (crypto/tls, crypto/x509, net/http, HTTP/2), all fixed in 1.27.2/1.27.3 |
 | Dependencies (verified 2026-11-06 via `go mod download`) | `modernc.org/sqlite` v1.61.1 BSD-3-Clause (pure Go); `aws-sdk-go-v2/service/cloudwatch` v1.75.5 Apache-2.0 (repo active 2026-11-05); `spf13/cobra` v1.10.2 Apache-2.0; `golang.org/x/crypto` v0.58.0 BSD-3-Clause; **`go-sql-driver/mysql` v1.10.1 is MPL-2.0** (file-level copyleft: fine to depend on unmodified under Apache-2.0, but modifications to its own files must be published; list it in the licence report) |

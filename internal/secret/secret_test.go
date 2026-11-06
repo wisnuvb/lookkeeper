@@ -26,8 +26,9 @@ func TestValueNeverLeaks(t *testing.T) {
 	y, _ := yaml.Marshal(struct{ P Value }{v})
 
 	outputs := map[string]string{
-		"%v":   fmt.Sprintf("%v", v),
-		"%s":   fmt.Sprintf("%s", v),
+		"%v": fmt.Sprintf("%v", v),
+		"%s": fmt.Sprintf("%s", v), //lint:ignore S1025 deliberately exercises the %s verb
+
 		"%+v":  fmt.Sprintf("%+v", v),
 		"%#v":  fmt.Sprintf("%#v", v),
 		"%q":   fmt.Sprintf("%q", v),

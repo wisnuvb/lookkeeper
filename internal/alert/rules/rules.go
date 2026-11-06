@@ -53,6 +53,10 @@ type Rule struct {
 	// Hysteresis is the relative margin by which a value must recover past a
 	// threshold before the level clears (0.05 = 5%). Use 0 for flags.
 	Hysteresis float64
+	// NeedsHistory marks rules whose meaning is the duration itself (for example
+	// "slot inactive for 10 minutes"). A one-shot snapshot cannot judge them, so
+	// `check` skips them and only the monitor daemon evaluates them.
+	NeedsHistory bool
 	// Levels are ordered warning then critical; either may be absent.
 	Levels []Level
 }

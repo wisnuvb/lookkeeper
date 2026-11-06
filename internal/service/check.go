@@ -24,6 +24,9 @@ type TargetResult struct {
 type CheckResult struct {
 	Targets  []TargetResult `json:"targets"`
 	Severity model.Severity `json:"severity"`
+	// Skipped lists checks that need history and are only evaluated by
+	// `monitor run` (a snapshot cannot say how long a condition has lasted).
+	Skipped []string `json:"skipped,omitempty"`
 }
 
 // ExitCode maps the overall severity to a process exit code: 0 ok, 2 warning,
@@ -39,18 +42,23 @@ func (r *CheckResult) ExitCode() int {
 	}
 }
 
-// instantRules returns rules with their "for" durations removed: a one-shot check
-// has no history, so it judges the current values only.
-func instantRules(in []rules.Rule) []rules.Rule {
-	out := make([]rules.Rule, len(in))
-	for i, r := range in {
-		out[i] = r
-		out[i].Levels = append([]rules.Level(nil), r.Levels...)
-		for j := range out[i].Levels {
-			out[i].Levels[j].For = 0
+// instantRules prepares rules for a one-shot check. A snapshot has no history, so
+// "for" durations are dropped (they are flap damping) and rules whose meaning is
+// the duration itself are left out; their descriptions are returned as skipped.
+func instantRules(in []rules.Rule) (out []rules.Rule, skipped []string) {
+	for _, r := range in {
+		if r.NeedsHistory {
+			skipped = append(skipped, r.Description)
+			continue
 		}
+		c := r
+		c.Levels = append([]rules.Level(nil), r.Levels...)
+		for j := range c.Levels {
+			c.Levels[j].For = 0
+		}
+		out = append(out, c)
 	}
-	return out
+	return out, skipped
 }
 
 // Check collects once from each target and evaluates the rules against the
@@ -62,11 +70,12 @@ func (s *Service) Check(ctx context.Context, targets []string, withSamples bool)
 	if err := s.validateTargets(targets); err != nil {
 		return nil, err
 	}
-	engine, err := rules.New(instantRules(s.rules), rules.Options{})
+	instant, skipped := instantRules(s.rules)
+	engine, err := rules.New(instant, rules.Options{})
 	if err != nil {
 		return nil, err
 	}
-	res := &CheckResult{Severity: model.SeverityOK}
+	res := &CheckResult{Severity: model.SeverityOK, Skipped: skipped}
 	for _, name := range targets {
 		tr := s.checkOne(ctx, engine, name, withSamples)
 		for _, f := range tr.Findings {

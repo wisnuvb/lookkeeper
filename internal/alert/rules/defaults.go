@@ -60,7 +60,7 @@ func Defaults() []Rule {
 			Levels: []Level{lv(w, 5*gib, 0), lv(c, 20*gib, 0)},
 		},
 		{
-			Metric: MetricPGSlotActive, Description: "replication slot consumer", Op: Below, Unit: UnitFlag,
+			Metric: MetricPGSlotActive, Description: "replication slot consumer", Op: Below, Unit: UnitFlag, NeedsHistory: true,
 			Levels: []Level{lv(w, 1, 10*m), lv(c, 1, 60*m)},
 		},
 		{

@@ -404,3 +404,25 @@ func (l lockedWriter) Write(p []byte) (int, error) {
 	defer l.mu.Unlock()
 	return l.w.Write(p)
 }
+
+func TestCheckSkipsRulesThatNeedHistory(t *testing.T) {
+	ts := newTelegram(t)
+	col := &fakeCollector{target: "db"}
+	slotLabels := map[string]string{"slot": "lk_x", "type": "logical"}
+	col.set(func() ([]model.Sample, bool, error) {
+		inactive := model.Sample{Target: "db", Metric: rules.MetricPGSlotActive, Labels: slotLabels, Value: 0, At: time.Now()}
+		return upSamples(inactive), true, nil
+	})
+	svc, _ := New(testConfig(t), testDeps(ts, col, nil, io.Discard))
+	res, err := svc.Check(context.Background(), nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An inactive slot is only a problem after minutes of inactivity; a snapshot can't know that.
+	if res.ExitCode() != 0 || len(res.Targets[0].Findings) != 0 {
+		t.Fatalf("a momentarily inactive slot must not alarm in a one-shot check: %+v", res)
+	}
+	if len(res.Skipped) != 1 || !strings.Contains(res.Skipped[0], "replication slot consumer") {
+		t.Errorf("the skipped rule must be reported, got %v", res.Skipped)
+	}
+}

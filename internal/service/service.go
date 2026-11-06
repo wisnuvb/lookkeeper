@@ -20,6 +20,7 @@ import (
 
 	"github.com/wisnuvb/lockkeeper/internal/alert/notify"
 	"github.com/wisnuvb/lockkeeper/internal/alert/rules"
+	"github.com/wisnuvb/lockkeeper/internal/cloudwatch"
 	"github.com/wisnuvb/lockkeeper/internal/collector"
 	"github.com/wisnuvb/lockkeeper/internal/collector/pg"
 	"github.com/wisnuvb/lockkeeper/internal/config"
@@ -43,6 +44,9 @@ type Deps struct {
 	RetrySleep func(context.Context, time.Duration) error
 	// TelegramBaseURL overrides the Telegram API endpoint (tests).
 	TelegramBaseURL string
+	// NewCloudWatch returns the CloudWatch API for a region (default
+	// cloudwatch.NewSDK, which uses the standard AWS credential chain).
+	NewCloudWatch func(region string) cloudwatch.API
 }
 
 // Service implements Lockkeeper's use cases.
@@ -73,6 +77,9 @@ func New(cfg *config.Config, deps Deps) (*Service, error) {
 	}
 	if deps.OpenPG == nil {
 		deps.OpenPG = dbconn.OpenPG
+	}
+	if deps.NewCloudWatch == nil {
+		deps.NewCloudWatch = cloudwatch.NewSDK
 	}
 	rs, err := rules.ApplyOverrides(rules.Defaults(), cfg.Alerts.Rules)
 	if err != nil {
@@ -156,7 +163,7 @@ func (s *Service) newCollector(target string) collector.Collector {
 	db := s.cfg.Databases[target]
 	members := []collector.Collector{s.newEngineCollector(target, db)}
 	members = append(members, s.extraCollectors(target, db)...)
-	return collector.NewGroup(target, members...)
+	return collector.NewGroupWithDerive(target, s.derivedSamples(db), members...)
 }
 
 // redactErr scrubs secrets from an error before it is logged or shown.

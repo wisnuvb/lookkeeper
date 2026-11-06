@@ -37,6 +37,11 @@ const (
 // EnginePostgres is the only engine supported by the collectors so far.
 const EnginePostgres = "postgres"
 
+var (
+	awsRegionRe   = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]{1,2}$`)
+	rdsInstanceRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]{0,62}$`)
+)
+
 var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 
 // Parse decodes and validates configuration from YAML. Unknown keys are errors.
@@ -212,8 +217,15 @@ func (c *Config) Validate() (warnings []string, err error) {
 		if db.DiskTotalGB < 0 {
 			add("%s.disk_total_gb: must not be negative", p)
 		}
-		if cw := db.CloudWatch; cw != nil && (cw.Region == "" || cw.DBInstanceID == "") {
-			add("%s.cloudwatch: region and db_instance_id are required", p)
+		if cw := db.CloudWatch; cw != nil {
+			switch {
+			case cw.Region == "" || cw.DBInstanceID == "":
+				add("%s.cloudwatch: region and db_instance_id are required", p)
+			case !awsRegionRe.MatchString(cw.Region):
+				add("%s.cloudwatch.region: %q is not an AWS region name such as eu-west-1", p, cw.Region)
+			case !rdsInstanceRe.MatchString(cw.DBInstanceID):
+				add("%s.cloudwatch.db_instance_id: must be an RDS instance identifier (letters, digits and hyphens, at most 63, starting with a letter)", p)
+			}
 		}
 		switch db.TLS.Mode {
 		case TLSVerifyFull, TLSVerifyCA:

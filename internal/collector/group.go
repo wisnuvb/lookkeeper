@@ -18,7 +18,14 @@ type auditor interface {
 type Group struct {
 	target  string
 	members []Collector
+	derive  DeriveFunc
 }
+
+// DeriveFunc computes extra samples from the merged output of a group's members,
+// for metrics that combine inputs from different collectors (for example retained
+// WAL from the database and free storage from a cloud reader). It receives every
+// sample collected and returns only the new ones.
+type DeriveFunc func(samples []model.Sample) []model.Sample
 
 // NewGroup returns a single Collector for target. With one member it returns
 // that member unchanged.
@@ -27,6 +34,15 @@ func NewGroup(target string, members ...Collector) Collector {
 		return members[0]
 	}
 	return &Group{target: target, members: members}
+}
+
+// NewGroupWithDerive is NewGroup plus a derive hook applied to the merged
+// samples of every collection. A nil derive is the same as NewGroup.
+func NewGroupWithDerive(target string, derive DeriveFunc, members ...Collector) Collector {
+	if derive == nil {
+		return NewGroup(target, members...)
+	}
+	return &Group{target: target, members: members, derive: derive}
 }
 
 // Target implements Collector.
@@ -45,6 +61,9 @@ func (g *Group) Collect(ctx context.Context) ([]model.Sample, bool, error) {
 		if err != nil {
 			errs = append(errs, err)
 		}
+	}
+	if g.derive != nil {
+		all = append(all, g.derive(all)...)
 	}
 	return all, complete, errors.Join(errs...)
 }

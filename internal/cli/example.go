@@ -27,8 +27,12 @@ databases:
       mode: verify-full                      # the default; checks the server certificate and name
       ca_file: /etc/lockkeeper/rds-ca-bundle.pem   # the RDS CA bundle for your region
     read_only: true                          # sessions are always read-only
-    # Optional, lets WAL thresholds be judged against disk size:
+    # Optional, lets WAL thresholds be judged against disk size (GiB, as in the RDS console):
     # disk_total_gb: 500
+    # Optional: read free storage from CloudWatch (needs only cloudwatch:GetMetricData).
+    # AWS credentials come from the standard AWS chain (environment, ~/.aws, instance
+    # role); Lockkeeper never stores them. See docs/cloudwatch-iam.md.
+    # cloudwatch: { region: eu-west-1, db_instance_id: your-db }
 
 monitor:
   interval: 30s

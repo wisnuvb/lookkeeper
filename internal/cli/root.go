@@ -165,6 +165,7 @@ func (a *app) newService(cfg *config.Config) (*service.Service, error) {
 		Secrets:  secret.Resolver{Getenv: a.env.Getenv, ReadFile: os.ReadFile, Stat: os.Stat, Prompt: a.env.Prompt},
 		Log:      log,
 		Redactor: a.redactor,
+		Version:  Version,
 	}
 	if a.env.Deps != nil {
 		deps = a.env.Deps(deps)

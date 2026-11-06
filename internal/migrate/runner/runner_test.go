@@ -166,9 +166,17 @@ while :; do sleep 1; done
 `)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	start := time.Now()
+	var start time.Time
 	go func() { _, err := run.Exec(ctx, tool, nil, nil); done <- err }()
-	time.Sleep(700 * time.Millisecond)
+	// Wait until the grandchild is really up (slow machines, parallel tests).
+	for i := 0; i < 100; i++ {
+		if _, err := os.Stat(pidFile); err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(200 * time.Millisecond)
+	start = time.Now() // the grace period is measured from the cancellation
 	cancel()
 	select {
 	case err := <-done:

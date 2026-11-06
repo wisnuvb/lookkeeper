@@ -122,6 +122,14 @@ collector and email notifier follow within Phase 1.
   minutes). The one-shot `check` skips them and says so; ignoring their `for` gave a false CRITICAL.
 - An incomplete collection must never clear active alerts (`Engine.Eval(..., complete)`).
 - `go.mod` pins `toolchain go1.27.3`: go1.27.1 had 9 reachable stdlib vulnerabilities.
+- **MySQL has the same gap:** `transaction_read_only=1` does not stop `SET GLOBAL`, `FLUSH`,
+  `PURGE BINARY LOGS`, `KILL`; required grants are exactly `PROCESS, REPLICATION CLIENT ON *.*`.
+  `INNODB_TRX.trx_started` is in the system time zone (sessions use `time_zone='SYSTEM'`).
+- Size functions (`pg_total_relation_size`) take locks and can stall behind ACCESS EXCLUSIVE: skip such relations.
+- The pre-flight cannot test target->source reachability read-only: it always emits a WARN with a manual command.
+- Preflight/inventory report only counts, names, sizes, settings: never data or other sessions' SQL.
+- Merging parallel work: git merges can be textually clean yet broken (a missing closing brace once);
+  always rebuild and run the whole suite on the merged result.
 - The e2e test (`internal/e2e`) runs the real binary and scans `ps`, logs and the state DB for canary
   secrets. Keep it green; extend it when adding anything that handles a secret.
 

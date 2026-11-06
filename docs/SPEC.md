@@ -69,6 +69,12 @@ built together with a manual validation against a non-production RDS instance.
 **Phase 1, slice 2:** remaining Postgres metrics (bloat, autovacuum, temp files, checkpoints,
 `pg_stat_statements`), **MySQL collector**, email notifier, optional Prometheus export.
 
+**Status of slice 2 and Phase 2 (2026-11-06): implemented and tested** (unit, integration on Postgres
+14/16/17 and MySQL 8.0/8.4, e2e on the real binary): extra PostgreSQL metrics, MySQL collector, SMTP
+email notifier, optional Prometheus endpoint, the optional CloudWatch reader, `inventory` and
+`preflight pg`. **The CloudWatch reader has never run against real AWS**, and nothing has been
+validated against RDS or Aurora (see Appendix A and docs/cloudwatch-iam.md).
+
 **Phase 1, slice 3 — web UI:** `lockkeeper serve`, authentication, dynamic connection registry
 (add/test/remove any database; source/target chosen per migration), dashboard, alerts, slots view.
 The migration wizard UI arrives with Phases 3–4 behind the same server-side confirmations.
@@ -206,6 +212,27 @@ steps where possible). Report is human-readable and `--json`.
 | Target | roles referenced by source objects exist or will be copied | WARN |
 | Clock/network | latency source→tool, throughput sample | INFO |
 
+**Implemented (2026-11-06): `lockkeeper inventory` and `lockkeeper preflight pg`** (about 40 finding ids;
+`--source`, `--target`, `--databases`, `--max-databases`, `--json`; exit 0 ok/info, 2 warnings, 3
+blockers, 1 error). Deviations and additions relative to the table above:
+
+- **target→source reachability is always one WARN** with a manual `psql` command (host/port/db/user,
+  `sslmode=verify-full`, no password): it cannot be tested read-only.
+- **Counts are per database:** a subscription is per database, so replication slots, WAL senders (+1
+  for the transient snapshot walsender) and apply workers are required per migrated database.
+- A target database that already has user tables is a BLOCKER; with only views/functions/sequences, a WARN.
+- Encoding mismatch BLOCKER, collation mismatch WARN; if the database does not exist on the target yet,
+  it is compared with the target's `template1` and a `CREATE DATABASE ... TEMPLATE template0` is suggested.
+- Extras: `shared_preload_libraries` differences, standby source/target, target `max_connections` below
+  the source's, generated columns / partitioned / foreign tables (INFO), unlogged tables excluded from
+  the "no primary key" finding (they are not replicated at all).
+- Only counts, names, sizes, settings and role attributes are reported; DDL sessions are counted
+  server-side (threat T10). Copy time is not estimated (it would require reading data); free disk is
+  stated as not visible over SQL, with the 1.5x figure computed.
+- Privilege findings describe the role the pre-flight connected as; the migration role may differ.
+- **Unverified:** RDS-specific guidance (parameter group + reboot, `rds_replication`, extension
+  prefixes, `ALTER ROLE ... SET wal_sender_timeout` on RDS) comes from documentation, not from an RDS run.
+
 ### 8.2 Logical replication constraints (carried into UX text)
 
 - Logical replication carries **data only, not DDL**; **sequences are not synchronized** — must be
@@ -319,10 +346,26 @@ condition holds for `for` duration; resolves with hysteresis; per-rule cooldown 
 | `pg.cache.hit_ratio` | `pg_stat_database` | < 95% for 15m | < 90% for 15m |
 | `pg.checkpoint.req_ratio` | `pg_stat_checkpointer`/`bgwriter` (version-dependent view) | > 30% | > 60% |
 | `pg.temp.bytes_rate` | `pg_stat_database.temp_bytes` | configurable | configurable |
-| `pg.bloat.dead_tuple_ratio` (per table) | `pg_stat_user_tables` | > 20% and > 100k rows | > 40% and > 1M rows |
+| `pg.table.dead_tuple_ratio` (per table; renamed from `pg.bloat...`) | `pg_stat_user_tables` | > 20% | > 40% (the collector only emits tables with >= 100k dead tuples; the separate "> 1M rows" condition is not applied) |
 | `pg.autovacuum.last_age_s` (big tables) | `pg_stat_user_tables` | > 3d | > 14d |
 | `pg.db.size_growth` | `pg_database_size` | informational | — |
 | `pg.statements.top` | `pg_stat_statements` (optional) | informational report, no alert | — |
+
+**Implementation notes for 10.1 (2026-11-06):**
+
+- Extra metrics: `pg.table.dead_tuple_ratio` (top 20 tables), `pg.autovacuum.last_age_s` (tables >= 1 GiB;
+  a never-vacuumed table emits `pg.autovacuum.never_vacuumed = 1` instead of a misleading age),
+  `pg.checkpoint.req_ratio`, and informational `pg.temp.bytes_rate`, `pg.db.size_bytes` and
+  `pg.statements.*` (top 10 by execution time, **queryid only, never query text**, only when the
+  extension is installed). Table-level metrics see only the configured `database`.
+- `pg.checkpoint.req_ratio` is computed over the shortest trailing window holding at least 5
+  checkpoints (cap 1 h): a per-interval delta almost never reaches 5 checkpoints at a 30 s interval and
+  would make the alert resolve and re-fire. `pg_stat_checkpointer` is used on PG 17+, `pg_stat_bgwriter` before.
+- Dead-tuple, autovacuum-age and size groups query at most every 5 minutes (they are heavy) and re-emit
+  the last result in between. Size functions take ACCESS SHARE locks, so relations that hold or await
+  ACCESS EXCLUSIVE are skipped (a test caught a real stall here).
+- `pg.slot.retained_wal_free_ratio` (derived, needs the CloudWatch reader) and `rds.free_storage_ratio`
+  are described in 10.3.
 
 ### 10.2 MySQL
 
@@ -338,6 +381,19 @@ condition holds for `for` duration; resolves with hysteresis; per-rule cooldown 
 | `my.innodb.history_list_length` | `information_schema.INNODB_METRICS` | > 100k | > 1M |
 | `my.binlog.disk_bytes` | `SHOW BINARY LOGS` | configurable | configurable |
 
+**Implementation notes for 10.2 (2026-11-06):** MySQL 8.0 and 8.4 only (MariaDB, 5.7 and 8.1-8.3/9.x are
+refused with `my.up = 0` and a message). Metrics: `my.up`, `my.connections.used_ratio`,
+`my.threads.running` (absolute defaults 32/64, assuming about 16 cores; lower on small machines),
+`my.trx.oldest_s` (300/1800 s; **added**, a nightly `mysqldump --single-transaction` will trigger it),
+`my.repl.io_running` / `my.repl.sql_running` (flags, `for` 1m, not history-only, so a one-shot `check`
+flags a stopped replica immediately), `my.repl.lag_s` (a NULL lag produces **no** sample), per-second
+`my.slow_queries.rate` and `my.innodb.row_lock_waits`, `my.innodb.buffer_pool_hit`,
+`my.innodb.history_list_length`, `my.binlog.disk_bytes`. The slow-query, row-lock and binlog defaults
+are deliberately high **placeholders** so that overrides are accepted. Deadlock rate is not collected.
+Required grants (verified on 8.0 and 8.4): `GRANT PROCESS, REPLICATION CLIENT ON *.*`, nothing else
+(no `performance_schema` access). Missing PROCESS or REPLICATION CLIENT marks the batch incomplete.
+`INNODB_TRX.trx_started` is printed in the system time zone, so sessions run with `time_zone='SYSTEM'`.
+
 ### 10.3 Migration-aware rules (active only while a migration exists)
 
 - **WAL guardrail:** warn at the warning threshold of `pg.slot.retained_wal_bytes`; at the critical
@@ -351,6 +407,14 @@ condition holds for `for` duration; resolves with hysteresis; per-rule cooldown 
 - Replication lag trend: alert when lag is not decreasing for 10 minutes during `following`.
 - Stalled apply: subscription remote LSN not advancing while the source LSN advances (also the
   symptom of pgcopydb #1060, a reminder that "reported progress" and "applied progress" differ).
+
+**Implemented, but never run against real AWS:** `rds.free_storage_bytes`, `rds.free_storage_ratio`
+(only when `disk_total_gb` is set; the value is in GiB) and the derived `pg.slot.retained_wal_free_ratio`
+(warning 0.25, critical 0.50) with the rules `rds.free_storage_ratio` (warning below 0.20 for 5m,
+critical below 0.10 for 2m). Unavailable data (empty result, API error, datapoint older than 10 minutes)
+yields no sample and an incomplete batch, never 0. The WAL-share rule and the absolute byte rule fire
+independently (the "whichever is lower" wording is satisfied by both being active). See
+docs/cloudwatch-iam.md for the IAM policy and the manual validation checklist.
 
 RDS disk-free is not visible over SQL. **Owner approved an optional CloudWatch reader**
 (`aws-sdk-go-v2/service/cloudwatch`, Apache-2.0, v1.75.5 verified 2026-11-06). Metric
@@ -399,7 +463,7 @@ Assets: production data, database credentials, replication slot health, integrit
 |---|---|---|
 | T1 | Credential leak via logs, error messages, `ps`, state files | ADR 0004: references only, `secret.Value` type, redaction writer, passfile for children, canary test |
 | T2 | Network MITM / sniffing between tool and DB | TLS required, `verify-full` default, warning banner on weaker modes |
-| T3 | Tool modifies or damages the source accidentally | **least-privilege role (`LOGIN` + `pg_monitor`) is the real boundary**; read-only sessions are defence in depth only (verified: a read-only session can still create a replication slot if the role may), so `AuditRole` warns about superuser/`rds_superuser`/`REPLICATION`/missing `pg_monitor`; dry-run, plan hash, typed confirmations and an audit log for every future source-mutating action; no source deletes; test helper refuses non-loopback DBs |
+| T3 | Tool modifies or damages the source accidentally | **least-privilege role (`LOGIN` + `pg_monitor`) is the real boundary**; read-only sessions are defence in depth only (verified on PostgreSQL: a read-only session can still create a replication slot if the role may; verified on MySQL 8.0/8.4: `transaction_read_only` refuses DML/DDL/GRANT but not `SET GLOBAL`, `FLUSH`, `PURGE BINARY LOGS` or `KILL`), so `AuditRole` warns about superuser/`rds_superuser`/`REPLICATION`/missing `pg_monitor`; dry-run, plan hash, typed confirmations and an audit log for every future source-mutating action; no source deletes; test helper refuses non-loopback DBs |
 | T4 | Unread slot fills source disk (outage) | slot monitoring, guardrail rules, alert-first policy, runbook for slot cleanup |
 | T5 | Silent data loss in CDC or in the snapshot→slot handoff | native logical replication (not pgcopydb `--follow`), mandatory verification gate, overlapping-transaction + concurrent-write regression tests, swappable engine |
 | T13 | Source password stored in target `pg_subscription` / echoed in target logs | dedicated short-lived migration user, per-migration password, dropped at cleanup, logging pre-flight warning (ADR 0004 item 7) |
@@ -414,6 +478,8 @@ Assets: production data, database credentials, replication slot health, integrit
 | T15 | Browser attacks: CSRF, XSS, DNS rebinding, clickjacking | CSRF tokens + `Origin`/`Host` checks, strict CSP, no third-party assets, `SameSite=Strict`, frame denial |
 | T16 | UI/API used to trigger source-mutating actions without intent (compromised session, buggy UI) | server-side plan-hash + typed confirmation + role check on every mutating endpoint; audit log with user identity |
 | T17 | Credential exfiltration through API, logs, backups or a copied DB file | API is write-only for secrets; redaction on all sinks; vault stores ciphertext with master key outside the DB (if option B approved); canary scan covers API responses and the DB file |
+| T19 | Email channel: credentials or alerts in the clear, STARTTLS stripping, header injection | server certificate always verified; no downgrade when STARTTLS is missing; credentials only after TLS (re-checked right before AUTH, also against the real peer address); `tls: none` refused for non-loopback hosts; CR/LF and control characters rejected in addresses and flattened in subject; errors scrubbed of password and AUTH blob; only AUTH PLAIN supported |
+| T20 | Prometheus endpoint: unauthenticated, labels can contain table names, DNS rebinding | off by default; loopback only unless `allow_non_loopback` (then warned); bound socket re-checked; Host header must be loopback while loopback-only; GET /metrics only; no query text in any label |
 | T18 | Privilege escalation between roles (viewer → operator → admin) | role checks centralised in the service layer, per-route tests that assert denial for every role/route pair |
 
 ## 13. Quality and testing summary
@@ -478,4 +544,5 @@ last ~5 weeks.
 | pgcopydb `--snapshot` | Documented: `clone --snapshot` re-uses an already-exported snapshot; `pgcopydb snapshot` exports one; with `--follow` pgcopydb itself creates the slot via `CREATE_REPLICATION_SLOT`. **Not verified:** that it accepts a snapshot exported by a different process (first item of the Phase 3 spike) |
 | Not verified | RDS Postgres facts the owner supplied (taken as given); mydumper behaviour with RDS; pgcopydb `NOTICE` content; whether #1044 has a fix released after v0.18; exact IAM policy for the CloudWatch reader; mydumper/RDS interplay |
 | Dependencies actually in use (go.mod, 2026-11-06) | `pgx/v5` v5.12.0, `go.yaml.in/yaml/v3` v3.0.6 (the maintained fork; `gopkg.in/yaml.v3`/`go-yaml/yaml` was archived 2025-04-01), `spf13/cobra` v1.10.2, `modernc.org/sqlite` v1.61.1, `golang.org/x/term`. `go.mod` has `go 1.26.0` (required by dependencies) and pins `toolchain go1.27.3`: with go1.27.1 `govulncheck` reported 9 standard-library vulnerabilities reachable from our code (crypto/tls, crypto/x509, net/http, HTTP/2), all fixed in 1.27.2/1.27.3 |
+| Dependencies added in slice 2 (2026-11-06) | `go-sql-driver/mysql` v1.10.1 (MPL-2.0, unmodified; list it with its MPL text in any distribution licence report), `filippo.io/edwards25519` v1.2.0 (BSD-style, Go Authors; required by the driver), 15 `aws-sdk-go-v2`/`smithy-go` modules (Apache-2.0; `config` is needed for the standard credential chain). Binary size 15.6 MB -> 18.6 MB with the AWS SDK. **Not validated:** AWS (never run), RDS/Aurora/Percona/MariaDB, PG 12/13/18, MySQL 5.7/8.1-8.3/9.x |
 | Dependencies (verified 2026-11-06 via `go mod download`) | `modernc.org/sqlite` v1.61.1 BSD-3-Clause (pure Go); `aws-sdk-go-v2/service/cloudwatch` v1.75.5 Apache-2.0 (repo active 2026-11-05); `spf13/cobra` v1.10.2 Apache-2.0; `golang.org/x/crypto` v0.58.0 BSD-3-Clause; **`go-sql-driver/mysql` v1.10.1 is MPL-2.0** (file-level copyleft: fine to depend on unmodified under Apache-2.0, but modifications to its own files must be published; list it in the licence report) |

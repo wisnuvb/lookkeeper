@@ -83,6 +83,10 @@ func TestHappyPathToCaughtUpUnderConcurrentWrites(t *testing.T) {
 			if got := r.state(id); got != "caught_up" {
 				t.Fatalf("state after start = %s\n%s", got, o.all())
 			}
+			// The slots keep retaining WAL after the command ends: it must say so.
+			if !strings.Contains(o.stdout, "KEEP RETAINING WAL") || !strings.Contains(o.stdout, "lockkeeper migrate cleanup --migration "+id) {
+				t.Fatalf("start must warn that the slots still retain WAL and name the commands:\n%s", o.stdout)
+			}
 			time.Sleep(time.Second) // more writes after caught_up
 			w.Stop()
 			t.Logf("writers committed %d transactions", w.Committed())

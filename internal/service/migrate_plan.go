@@ -41,7 +41,7 @@ func portOrDefault(p int) int {
 }
 
 func sideOf(name string, db config.Database, version string, major int) pgnative.Side {
-	return pgnative.Side{Name: name, Host: db.Host, Port: portOrDefault(db.Port), User: db.User, Database: db.Database, TLSMode: tlsMode(db), Version: version, Major: major}
+	return pgnative.Side{Name: name, Host: db.Host, Port: portOrDefault(db.Port), User: db.User, Database: db.Database, TLSMode: tlsMode(db), CAFile: db.TLS.CAFile, Version: version, Major: major}
 }
 
 // peerFor decides how the target server reaches the source and refuses a
@@ -61,6 +61,14 @@ func peerFor(opts MigrateOptions, src config.Database) (pgnative.Peer, error) {
 	}
 	if p.SSLMode == "" {
 		p.SSLMode = tlsMode(src)
+	}
+	// A whitelist: the password of the migration role travels over this
+	// connection, and libpq's allow/prefer would fall back to plaintext.
+	switch p.SSLMode {
+	case config.TLSVerifyFull, config.TLSVerifyCA:
+	case config.TLSRequire, config.TLSDisable:
+	default:
+		return p, fmt.Errorf("the subscription sslmode %q is not supported: use verify-full or verify-ca (or, for a loopback peer or with tls.allow_insecure, require or disable)", p.SSLMode)
 	}
 	if !config.IsLocalHost(p.Host) && (p.SSLMode == config.TLSDisable || p.SSLMode == config.TLSRequire) && !src.TLS.AllowInsecure {
 		return p, fmt.Errorf("the target would connect to the source at %s:%d with sslmode=%s, which does not authenticate the server (or uses no TLS): use verify-full or verify-ca (with --source-peer-sslrootcert, the CA file path on the TARGET server), or set tls.allow_insecure on the source connection to accept the risk", p.Host, p.Port, p.SSLMode)
@@ -281,6 +289,9 @@ func (s *Service) loadMigration(ctx context.Context, st *store.Store, m store.Mi
 	if err := json.Unmarshal([]byte(m.InputJSON), &in); err != nil {
 		return nil, fmt.Errorf("the stored plan input of %s is unreadable: %w", m.ID, err)
 	}
+	if err := s.checkConfigUnchanged(in); err != nil {
+		return nil, err
+	}
 	if err := s.finishInput(&in, m.ID, tools); err != nil {
 		return nil, err
 	}
@@ -334,6 +345,44 @@ func (s *Service) driftCheck(ctx context.Context, l *loaded, preApply bool) erro
 	if len(problems) > 0 {
 		sort.Strings(problems)
 		return fmt.Errorf("the source schema changed after the plan was approved (schema freeze was not respected); nothing was changed. Abort and clean up this migration, then plan again:\n  - %s", strings.Join(problems, "\n  - "))
+	}
+	return nil
+}
+
+// checkConfigUnchanged refuses to act on a stored migration if the connections
+// it was planned against are no longer the ones the live configuration names.
+// Execution connects through the live configuration, while the approved plan
+// only fixes what was shown to the operator: without this check, editing a host
+// (or user, database, TLS mode, CA file) after approval would send the approved
+// actions to another server. It runs before anything connects.
+func (s *Service) checkConfigUnchanged(in pgnative.PlanInput) error {
+	var diffs []string
+	for _, c := range []struct {
+		role   string
+		stored pgnative.Side
+	}{{"source", in.Source}, {"target", in.Target}} {
+		db, ok := s.cfg.Databases[c.stored.Name]
+		if !ok {
+			diffs = append(diffs, fmt.Sprintf("the %s connection %q no longer exists", c.role, c.stored.Name))
+			continue
+		}
+		live := sideOf(c.stored.Name, db, c.stored.Version, c.stored.Major)
+		cmp := func(what, was, now string) {
+			if was != now {
+				diffs = append(diffs, fmt.Sprintf("%s %s was %q, is now %q", c.role, what, was, now))
+			}
+		}
+		if !strings.EqualFold(live.Host, c.stored.Host) {
+			cmp("host", c.stored.Host, live.Host)
+		}
+		cmp("port", strconv.Itoa(c.stored.Port), strconv.Itoa(live.Port))
+		cmp("user", c.stored.User, live.User)
+		cmp("database", c.stored.Database, live.Database)
+		cmp("TLS mode", c.stored.TLSMode, live.TLSMode)
+		cmp("CA file", c.stored.CAFile, live.CAFile)
+	}
+	if len(diffs) > 0 {
+		return fmt.Errorf("the configuration was edited after this migration was planned (%s): its approved actions would run against a different server. Nothing was done and nothing was connected. Restore the original connection settings, or finish the migration by hand with the SQL shown by `migrate plan`", strings.Join(diffs, "; "))
 	}
 	return nil
 }

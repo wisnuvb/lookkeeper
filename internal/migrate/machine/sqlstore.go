@@ -61,6 +61,20 @@ func (s SQLStore) FinishStep(ctx context.Context, stepID int64, status, detail, 
 	return s.DB.FinishStep(ctx, stepID, status, detail, errText, s.now())
 }
 
+// StepStarted implements Store.
+func (s SQLStore) StepStarted(ctx context.Context, id, db, name string) (bool, error) {
+	steps, err := s.DB.Steps(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	for _, st := range steps {
+		if st.Database == db && st.Name == name {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // SetCheckpoint implements Store.
 func (s SQLStore) SetCheckpoint(ctx context.Context, id, db, key, value string) error {
 	return s.DB.SetCheckpoint(ctx, id, db, key, value, s.now())

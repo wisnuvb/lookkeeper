@@ -64,6 +64,9 @@ func TestKillMidCopyThenResume(t *testing.T) {
 			if o.code == 0 {
 				t.Fatalf("an interrupted copy must not look successful:\n%s", o.all())
 			}
+			if !strings.Contains(o.stdout, "KEEP RETAINING WAL") {
+				t.Fatalf("an interrupted start leaves a slot behind and must say so, whatever way it ended:\n%s", o.all())
+			}
 			want := map[string]string{"copy tool killed": "failed", "driver cancelled": "copying"}[mode]
 			if got := r.state(id); got != want {
 				t.Fatalf("state after the interruption = %s, want %s\n%s", got, want, o.all())

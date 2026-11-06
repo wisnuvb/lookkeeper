@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/wisnuvb/lockkeeper/internal/action"
+	"github.com/wisnuvb/lockkeeper/internal/alert/rules"
 	"github.com/wisnuvb/lockkeeper/internal/migrate"
 	"github.com/wisnuvb/lockkeeper/internal/migrate/machine"
 	"github.com/wisnuvb/lockkeeper/internal/migrate/pgnative"
@@ -151,6 +152,15 @@ func (s *Service) RunMigration(ctx context.Context, o RunOptions) (*RunResult, e
 	if err != nil {
 		return res, err
 	}
+	// However this command ends (caught up, --no-wait, failure, Ctrl-C), a slot
+	// of this migration that is still on the source keeps retaining WAL: say so.
+	defer func() {
+		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+		defer cancel()
+		if msg := s.slotWarning(wctx, conns, l); msg != "" && o.Notify != nil {
+			o.Notify("warn", msg)
+		}
+	}()
 	exec := s.executor(st)
 	mainAuth, err := exec.Authorize(l.plan, m.ApprovedHash, approval)
 	if err != nil {
@@ -264,6 +274,62 @@ func (s *Service) RunMigration(ctx context.Context, o RunOptions) (*RunResult, e
 			o.Notify("info", "recovery plan applied; copying again under new slot(s)")
 		}
 	}
+}
+
+// slotRow is one slot of the migration that is still on the source.
+type slotRow struct {
+	Database string
+	Slot     string
+	Retained int64
+	Known    bool
+}
+
+// slotWarning looks for slots of the migration on the source and returns the
+// warning text, or "" if there are none (or the source cannot be read: then it
+// says that it could not look). It is informational only: nothing is dropped.
+func (s *Service) slotWarning(ctx context.Context, conns *migrateConns, l *loaded) string {
+	var rows []slotRow
+	unreadable := false
+	for i, d := range l.in.DBs {
+		src, err := conns.Source(ctx, d.Database)
+		if err != nil {
+			unreadable = true
+			continue
+		}
+		slots, err := pgnative.SlotsWithPrefix(ctx, src, fmt.Sprintf("lk_%s_d%d_a", l.m.ID, i+1))
+		if err != nil {
+			unreadable = true
+		}
+		for _, name := range slots {
+			r := slotRow{Database: d.Database, Slot: name}
+			if ss, err := pgnative.ReadSlot(ctx, src, name); err == nil {
+				r.Retained, r.Known = ss.RetainedBytes, true
+			}
+			rows = append(rows, r)
+		}
+		_ = src.Close(ctx)
+	}
+	return formatSlotWarning(l.m.ID, rows, unreadable)
+}
+
+// formatSlotWarning renders the loud warning about slots that keep retaining WAL.
+func formatSlotWarning(id string, rows []slotRow, unreadable bool) string {
+	if len(rows) == 0 {
+		if unreadable {
+			return fmt.Sprintf("WARNING: could not check the source for replication slots of migration %s; if it has any, they keep retaining WAL: run `lockkeeper migrate status --migration %s`", id, id)
+		}
+		return ""
+	}
+	var parts []string
+	for _, r := range rows {
+		if r.Known {
+			parts = append(parts, fmt.Sprintf("%s (database %s) retains %s", r.Slot, r.Database, rules.FormatBytes(float64(r.Retained))))
+		} else {
+			parts = append(parts, fmt.Sprintf("%s (database %s)", r.Slot, r.Database))
+		}
+	}
+	return fmt.Sprintf("WARNING: %d replication slot(s) of migration %s are on the source and KEEP RETAINING WAL, also while nothing is running: %s. Nothing drops them automatically. Watch: `lockkeeper migrate status --migration %s`. To release them: `lockkeeper migrate abort --migration %s`, then `lockkeeper migrate cleanup --migration %s` (see docs/runbooks/wal-slot-full.md)",
+		len(rows), id, strings.Join(parts, "; "), id, id, id)
 }
 
 // buildRecoveryPlan reads what only the live servers know (old slots, the

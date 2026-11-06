@@ -159,6 +159,46 @@ func TestRealStatementsCarryTheSecretsOnlyAtApplyTime(t *testing.T) {
 	}
 }
 
+// A database, table or host whose name contains a secret placeholder must never
+// be planned: rendering the template would put the real password where the name
+// is (CREATE SUBSCRIPTION ... dbname='x{{password}}').
+func TestNamesThatLookLikePlaceholdersAreRefused(t *testing.T) {
+	for name, mut := range map[string]func(*PlanInput){
+		"database":      func(in *PlanInput) { in.DBs[0].Database = "x{{password}}" },
+		"database }}":   func(in *PlanInput) { in.DBs[0].Database = "x}}" },
+		"table":         func(in *PlanInput) { in.DBs[0].Publish[0].Name = "t{{verifier}}" },
+		"schema":        func(in *PlanInput) { in.DBs[0].NeedFull[0].Schema = "{{password}}" },
+		"peer host":     func(in *PlanInput) { in.Peer.Host = "h{{password}}" },
+		"root cert":     func(in *PlanInput) { in.Peer.SSLRootCert = "/x/{{password}}" },
+		"source user":   func(in *PlanInput) { in.Source.User = "u{{password}}" },
+		"target config": func(in *PlanInput) { in.Target.Database = "{{password}}" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			in := testInput(t)
+			mut(&in)
+			if _, err := BuildPlan(in); err == nil || !strings.Contains(err.Error(), "reserved for secret placeholders") {
+				t.Fatalf("BuildPlan must refuse: %v", err)
+			}
+			if _, err := BuildAbortPlan(in, "m1", true); err == nil {
+				t.Fatal("BuildAbortPlan must refuse")
+			}
+			if _, err := BuildCleanupPlan(CleanupInput{PlanInput: in, MigrationID: "m1"}); err == nil {
+				t.Fatal("BuildCleanupPlan must refuse")
+			}
+			if _, err := BuildRecoverPlan(RecoverInput{PlanInput: in, MigrationID: "m1", Attempts: map[int]int{1: 1}}); err == nil {
+				t.Fatal("BuildRecoverPlan must refuse")
+			}
+		})
+	}
+	in := testInput(t)
+	if _, err := BuildCleanupPlan(CleanupInput{PlanInput: in, MigrationID: "m1", Slots: map[int][]string{1: {"lk_{{password}}"}}}); err == nil {
+		t.Fatal("a slot name with a placeholder must be refused")
+	}
+	if _, err := BuildRecoverPlan(RecoverInput{PlanInput: in, MigrationID: "m1", Attempts: map[int]int{1: 1}, TargetCreate: map[int]string{1: `CREATE DATABASE "{{password}}"`}}); err == nil {
+		t.Fatal("a CREATE DATABASE with a placeholder must be refused")
+	}
+}
+
 func TestScramVerifierShapeAndDeterminism(t *testing.T) {
 	salt := []byte("0123456789abcdef")
 	a, err := ScramVerifier("pencil", salt)

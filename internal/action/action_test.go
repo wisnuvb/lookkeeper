@@ -325,6 +325,23 @@ func TestDryRunConnectsNowhere(t *testing.T) {
 	}
 }
 
+func TestRejectPlaceholder(t *testing.T) {
+	if err := RejectPlaceholder("name", "app", "my-db", "a{b}c", "{x}"); err != nil {
+		t.Fatalf("ordinary names are fine: %v", err)
+	}
+	for _, bad := range []string{"x{{password}}", "{{", "a}}b", "{{verifier}}"} {
+		if err := RejectPlaceholder("database name", "ok", bad); err == nil || !strings.Contains(err.Error(), "database name") {
+			t.Errorf("%q must be refused: %v", bad, err)
+		}
+	}
+	// What the check prevents: the template substitutes by name.
+	tpl := Template("CREATE SUBSCRIPTION s CONNECTION 'dbname=" + "x{{password}}" + " password={{password}}'")
+	got, _ := tpl.Render(map[string]string{"password": "REAL"})
+	if strings.Count(got, "REAL") != 2 {
+		t.Fatalf("the injection this guards against does not happen? %s", got)
+	}
+}
+
 func TestValidate(t *testing.T) {
 	p := testPlan()
 	p.Actions = append(p.Actions, &Statement{Key: "source.create-role", At: PhaseSource})

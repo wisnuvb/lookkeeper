@@ -694,3 +694,50 @@ func TestStuckSubscriptionNeverCountsAsCaughtUp(t *testing.T) {
 		t.Fatalf("a worker that is down must keep the migration in following, got %s", st)
 	}
 }
+
+// A target that already holds tables (or a stray slot or subscription with this
+// migration's name) when this migration never started a copy of that database
+// is not ours: a hard error, never a recovery plan, which would drop the database.
+func TestForeignStateIsAHardErrorNotARecovery(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name  string
+		setup func(w *fakeWorld)
+		want  string
+	}{
+		{"target already has tables", func(w *fakeWorld) { w.tables[1] = true }, "target is not empty"},
+		{"stray slot with our name", func(w *fakeWorld) { w.slots[1] = map[int]bool{1: true} }, "replication slot"},
+		{"stray subscription with our name", func(w *fakeWorld) { w.subs[1] = &fakeSub{attempt: 1} }, "subscription"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t, "app")
+			e.approve()
+			w := newFakeWorld("app")
+			tc.setup(w)
+			_, err := NewDriver(e.ss, w, e.opts("A", false)).Run(ctx, e.id)
+			var rr *RecoveryRequiredError
+			if errors.As(err, &rr) {
+				t.Fatalf("foreign state must not lead to a recovery plan: %v", err)
+			}
+			if !errors.Is(err, ErrForeignState) || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "refusing to plan a DROP DATABASE") {
+				t.Fatalf("want ErrForeignState mentioning %q, got %v", tc.want, err)
+			}
+			if w.copies[1] != 0 || w.recoveries[1] != 0 {
+				t.Fatal("nothing may be copied or recovered over state we did not create")
+			}
+		})
+	}
+
+	t.Run("after Lockkeeper started a copy the same state is a recovery", func(t *testing.T) {
+		e := newEnv(t, "app")
+		e.approve()
+		w := newFakeWorld("app")
+		w.failCopy[1] = errors.New("boom") // leaves a slot and tables, after the copy intent was recorded
+		_, _ = NewDriver(e.ss, w, e.opts("A", false)).Run(ctx, e.id)
+		_, err := NewDriver(e.ss, w, e.opts("B", false)).Run(ctx, e.id)
+		var rr *RecoveryRequiredError
+		if !errors.As(err, &rr) {
+			t.Fatalf("a copy that Lockkeeper itself started is recoverable, got %v", err)
+		}
+	})
+}

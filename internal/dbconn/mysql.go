@@ -142,6 +142,10 @@ func MySQLConfig(spec MySQLSpec) (*mysql.Config, error) {
 		"transaction_read_only": "1",
 		"max_execution_time":    strconv.FormatInt(qms, 10), // SELECT statements only
 		"lock_wait_timeout":     strconv.FormatInt(lockSecs, 10),
+		// information_schema.INNODB_TRX prints trx_started in the system time zone
+		// (verified on 8.4), whatever @@time_zone says. NOW() must be in the same
+		// zone or transaction ages are off by the zone difference.
+		"time_zone": "'SYSTEM'",
 	}
 	return cfg, nil
 }

@@ -52,31 +52,12 @@ func TestAuditLeastPrivilegeAccountIsClean(t *testing.T) {
 }
 
 func TestAuditFlagsRootAndAllPrivileges(t *testing.T) {
+	// root lists every static privilege one by one instead of ALL PRIVILEGES: it
+	// still counts as a full administrator and gets a single message.
 	for name, lines := range map[string][]string{"8.0 root": rootGrants80, "8.4 root": rootGrants84} {
 		w := AuditGrants("root@localhost", lines)
-		// root lists every static privilege instead of ALL PRIVILEGES, so it is
-		// reported through SUPER plus the list of risky privileges.
-		if !hasWarning(w, "has SUPER", "PROCESS and REPLICATION CLIENT") {
-			t.Errorf("%s must be flagged for SUPER: %v", name, w)
-		}
-		if !hasWarning(w, "write, DDL or administration", "INSERT", "BINLOG_ADMIN") {
-			t.Errorf("%s: write/DDL/admin privileges not listed: %v", name, w)
-		}
-		if !hasWarning(w, "REPLICATION SLAVE") {
-			t.Errorf("%s: REPLICATION SLAVE not flagged: %v", name, w)
-		}
-		if !hasWarning(w, "WITH GRANT OPTION") {
-			t.Errorf("%s: GRANT OPTION not flagged: %v", name, w)
-		}
-		if !hasWarning(w, "SELECT on *.*") {
-			t.Errorf("%s: global SELECT not flagged: %v", name, w)
-		}
-		if !hasWarning(w, "PROXY") {
-			t.Errorf("%s: PROXY (impersonation) not flagged: %v", name, w)
-		}
-		// root has PROCESS and REPLICATION CLIENT: no missing-privilege warnings.
-		if hasWarning(w, "lacks") {
-			t.Errorf("%s: must not report missing privileges: %v", name, w)
+		if len(w) != 1 || !hasWarning(w, "ALL PRIVILEGES on *.*", "REQUIRE SSL", "grant privileges to others") {
+			t.Errorf("%s must be flagged once as a full administrator: %v", name, w)
 		}
 	}
 

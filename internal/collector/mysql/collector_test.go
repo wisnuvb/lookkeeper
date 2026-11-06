@@ -494,6 +494,64 @@ func TestParseReplicaRowRecordedColumnSets(t *testing.T) {
 	}
 }
 
+// realReplicaColumns is the complete column list printed by SHOW REPLICA STATUS on
+// MySQL 8.0.46 and 8.4.13 (recorded from the integration test).
+var realReplicaColumns = []string{
+	"Replica_IO_State", "Source_Host", "Source_User", "Source_Port", "Connect_Retry", "Source_Log_File", "Read_Source_Log_Pos",
+	"Relay_Log_File", "Relay_Log_Pos", "Relay_Source_Log_File", "Replica_IO_Running", "Replica_SQL_Running", "Replicate_Do_DB",
+	"Replicate_Ignore_DB", "Replicate_Do_Table", "Replicate_Ignore_Table", "Replicate_Wild_Do_Table", "Replicate_Wild_Ignore_Table",
+	"Last_Errno", "Last_Error", "Skip_Counter", "Exec_Source_Log_Pos", "Relay_Log_Space", "Until_Condition", "Until_Log_File",
+	"Until_Log_Pos", "Source_SSL_Allowed", "Source_SSL_CA_File", "Source_SSL_CA_Path", "Source_SSL_Cert", "Source_SSL_Cipher",
+	"Source_SSL_Key", "Seconds_Behind_Source", "Source_SSL_Verify_Server_Cert", "Last_IO_Errno", "Last_IO_Error", "Last_SQL_Errno",
+	"Last_SQL_Error", "Replicate_Ignore_Server_Ids", "Source_Server_Id", "Source_UUID", "Source_Info_File", "SQL_Delay",
+	"SQL_Remaining_Delay", "Replica_SQL_Running_State", "Source_Retry_Count", "Source_Bind", "Last_IO_Error_Timestamp",
+	"Last_SQL_Error_Timestamp", "Source_SSL_Crl", "Source_SSL_Crlpath", "Retrieved_Gtid_Set", "Executed_Gtid_Set", "Auto_Position",
+	"Replicate_Rewrite_DB", "Channel_Name", "Source_TLS_Version", "Source_public_key_path", "Get_Source_public_key", "Network_Namespace",
+}
+
+func TestCollectWithTheRealReplicaColumnSet(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		io, sqlr    string
+		lag         any
+		wantIO      float64
+		wantSQL     float64
+		wantLagSeen bool
+	}{
+		{"healthy", "Yes", "Yes", "0", 1, 1, true},
+		{"sql stopped", "Yes", "No", nil, 1, 0, false},
+		{"io connecting", "Connecting", "Yes", nil, 0, 1, false},
+	} {
+		row := make([]any, len(realReplicaColumns))
+		for i, c := range realReplicaColumns {
+			switch c {
+			case "Replica_IO_Running":
+				row[i] = tc.io
+			case "Replica_SQL_Running":
+				row[i] = tc.sqlr
+			case "Seconds_Behind_Source":
+				row[i] = tc.lag
+			case "Channel_Name", "Last_IO_Error", "Last_SQL_Error", "Source_Host":
+				row[i] = ""
+			default:
+				row[i] = "x"
+			}
+		}
+		f := healthyServer()
+		f.onRows("SHOW REPLICA STATUS", realReplicaColumns, row)
+		samples, complete, err := newTestCollector(t, f, &clock{t0}).Collect(context.Background())
+		if err != nil || !complete {
+			t.Fatalf("%s: %v %v", tc.name, complete, err)
+		}
+		if mustGet(t, samples, rules.MetricMySQLReplIORunning) != tc.wantIO || mustGet(t, samples, rules.MetricMySQLReplSQLRunning) != tc.wantSQL {
+			t.Errorf("%s: wrong flags in %+v", tc.name, samples)
+		}
+		if _, ok := get(samples, rules.MetricMySQLReplLag); ok != tc.wantLagSeen {
+			t.Errorf("%s: lag present = %v", tc.name, ok)
+		}
+	}
+}
+
 func TestBrokenConnectionIsDroppedAndReopened(t *testing.T) {
 	f := healthyServer()
 	c := newTestCollector(t, f, &clock{t0})

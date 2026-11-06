@@ -390,8 +390,13 @@ func bufferPoolHit(prev, cur map[string]int64) (ratio float64, ok bool) {
 func (c *Collector) transactions(ctx context.Context, b *batch, _ serverInfo) error {
 	var age float64
 	// Our own session is excluded. Only ages are read, never statement text.
+	//
+	// trx_started is printed in the system time zone, so the session must use it
+	// too (dbconn sets time_zone = SYSTEM); both sides are converted to epoch
+	// seconds under that one zone. Only a transaction started inside the repeated
+	// hour of a daylight-saving change can be off, by up to an hour.
 	err := c.db.QueryRowContext(ctx, `
-		SELECT COALESCE(MAX(TIMESTAMPDIFF(SECOND, trx_started, NOW())), 0)
+		SELECT COALESCE(MAX(UNIX_TIMESTAMP() - UNIX_TIMESTAMP(trx_started)), 0)
 		FROM information_schema.INNODB_TRX
 		WHERE trx_mysql_thread_id <> CONNECTION_ID()`).Scan(&age)
 	if err != nil {

@@ -70,7 +70,10 @@ func TestMySQLConfigSecurityDefaults(t *testing.T) {
 	if cfg.Params["max_execution_time"] != "7000" || cfg.Params["lock_wait_timeout"] != "7" {
 		t.Errorf("timeouts not applied: %v", cfg.Params)
 	}
-	if len(cfg.Params) != 3 {
+	if cfg.Params["time_zone"] != "'SYSTEM'" {
+		t.Errorf("time_zone must follow the system zone (INNODB_TRX uses it): %v", cfg.Params)
+	}
+	if len(cfg.Params) != 4 {
 		t.Errorf("unexpected extra session variables: %v", cfg.Params)
 	}
 

@@ -68,12 +68,23 @@ func AuditGrants(account string, lines []string) []string {
 			}
 		}
 	}
+	// SHOW GRANTS prints "ALL PRIVILEGES" only in some cases; a full administrator
+	// is often listed privilege by privilege (verified on 8.4). Recognise that
+	// too, so such an account gets one clear message instead of a wall of text.
+	for _, p := range []string{"SUPER", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "SHUTDOWN", "FILE", "CREATE USER"} {
+		if !global[p] {
+			break
+		}
+		if p == "CREATE USER" {
+			allGlobal = true
+		}
+	}
 	has := func(p string) bool { return allGlobal || global[p] }
 
 	var w []string
 	switch {
 	case allGlobal:
-		msg := fmt.Sprintf("account %s has ALL PRIVILEGES on *.*; Lockkeeper only needs PROCESS and REPLICATION CLIENT. A read-only session is not a safety boundary, so use a dedicated account: %s", account, recommendedGrants)
+		msg := fmt.Sprintf("account %s has ALL PRIVILEGES on *.* (or every privilege listed one by one); Lockkeeper only needs PROCESS and REPLICATION CLIENT. A read-only session is not a safety boundary, so use a dedicated account: %s", account, recommendedGrants)
 		if hasGrantOption(grants, true) {
 			msg += " (the account can also grant privileges to others)"
 		}

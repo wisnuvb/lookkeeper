@@ -41,6 +41,11 @@ type MySQLOptions struct {
 	// network under Alias, so that a second container can reach it.
 	Network string
 	Alias   string
+	// NoBinlog starts the server without binary logging (and without GTIDs, which
+	// need it for replication).
+	NoBinlog bool
+	// Env are extra container environment variables, for example "TZ=Asia/Jakarta".
+	Env []string
 	// Args are extra mysqld arguments, for example "--long_query_time=1".
 	Args []string
 }
@@ -72,15 +77,21 @@ func StartMySQLWith(t testing.TB, opts MySQLOptions) *MySQL {
 		"-p", "127.0.0.1::3306",
 		"-e", "MYSQL_ROOT_PASSWORD=" + pw,
 	}
+	for _, e := range opts.Env {
+		args = append(args, "-e", e)
+	}
 	if opts.Network != "" {
 		args = append(args, "--network", opts.Network, "--network-alias", opts.Alias)
 	}
 	args = append(args, MySQLImage(),
 		"--server-id="+strconv.Itoa(int(mysqlServerID.Add(1))+100),
-		"--log-bin=mysql-bin",
-		"--gtid-mode=ON", "--enforce-gtid-consistency=ON",
 		"--innodb-buffer-pool-size=64M",
 	)
+	if opts.NoBinlog {
+		args = append(args, "--skip-log-bin")
+	} else {
+		args = append(args, "--log-bin=mysql-bin", "--gtid-mode=ON", "--enforce-gtid-consistency=ON")
+	}
 	args = append(args, opts.Args...)
 	out, err := exec.Command("docker", args...).CombinedOutput()
 	if err != nil {
@@ -142,6 +153,7 @@ func (m *MySQL) adminConfig() *mysql.Config {
 	cfg.Timeout = 3 * time.Second
 	cfg.ReadTimeout = 30 * time.Second
 	cfg.MultiStatements = false
+	cfg.Logger = &mysql.NopLogger{} // the entrypoint restarts the server during init; its resets are noise
 	return cfg
 }
 

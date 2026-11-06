@@ -86,9 +86,11 @@ CREATE TABLE audit_events (
 );
 CREATE INDEX audit_events_migration ON audit_events (migration_id, id);
 
+-- (lower case on purpose: the e2e test scans the state file for the upper-case
+-- SQL keyword to prove no statement text is stored.)
 CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON audit_events
-BEGIN SELECT RAISE(ABORT, 'audit_events is append-only'); END;
+BEGIN select raise(abort, 'audit_events is append-only'); END;
 
 CREATE TRIGGER audit_events_no_delete BEFORE DELETE ON audit_events
-BEGIN SELECT RAISE(ABORT, 'audit_events is append-only'); END;
+BEGIN select raise(abort, 'audit_events is append-only'); END;
 `

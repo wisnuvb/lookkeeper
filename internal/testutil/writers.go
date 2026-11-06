@@ -27,6 +27,11 @@ type Writers struct {
 // and starts writing.
 func StartWriters(t testing.TB, dsn string, n int) *Writers {
 	t.Helper()
+	cfg, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		t.Fatalf("writers: bad DSN: %v", err)
+	}
+	RequireLoopback(t, cfg.Host) // a test must never write to a server it did not start
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &Writers{cancel: cancel}
 	for i := 0; i < n; i++ {

@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -348,22 +349,52 @@ func (run *Run) exec(ctx context.Context, tool string, args []string, extraEnv m
 		return res, fmt.Errorf("%s was stopped: %w", filepath.Base(tool), ctx.Err())
 	}
 	if waitErr != nil {
-		return res, fmt.Errorf("%s failed (exit status %d, log %s): %s", filepath.Base(tool), res.ExitCode, logPath, tailOf(logPath, 12))
+		return res, &ToolError{Tool: filepath.Base(tool), ExitCode: res.ExitCode, LogPath: logPath, tail: safeTail(logPath, 12)}
 	}
 	return res, nil
 }
 
-// tailOf returns the last n lines of a (already redacted) log file on one line.
-func tailOf(path string, n int) string {
+// ToolError is a failed tool run. Its text names the tool, the exit status and
+// the log file and nothing else: the error value ends up in the append-only audit
+// log, in step and action rows and in failed_reason, and the tools quote rows of
+// the copied tables in their messages (pg_restore: "DETAIL: Failing row contains
+// (...)", "CONTEXT: COPY t, line 1: ..."). Tail returns the last lines for the
+// operator's terminal only.
+type ToolError struct {
+	Tool     string
+	ExitCode int
+	LogPath  string
+	tail     string
+}
+
+func (e *ToolError) Error() string {
+	return fmt.Sprintf("%s failed (exit status %d); its output is in %s", e.Tool, e.ExitCode, e.LogPath)
+}
+
+// Tail returns the last lines of the tool's output with every line that can hold
+// row data removed. It is meant for the terminal and must not be stored.
+func (e *ToolError) Tail() string { return e.tail }
+
+// rowDataLine matches the lines in which PostgreSQL tools quote data.
+var rowDataLine = regexp.MustCompile(`(?i)\b(DETAIL|CONTEXT|QUERY)\b|Failing row|COPY [^ ]+, line [0-9]+|\bline [0-9]+: `)
+
+// safeTail returns the last n lines of the (already secret-redacted) log that
+// pass the row-data filter, joined on one line.
+func safeTail(path string, n int) string {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return "(no log)"
 	}
-	lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
+	var keep []string
+	for _, l := range strings.Split(strings.TrimRight(string(b), "\n"), "\n") {
+		if !rowDataLine.MatchString(l) {
+			keep = append(keep, l)
+		}
 	}
-	return strings.Join(strings.Fields(strings.Join(lines, " | ")), " ")
+	if len(keep) > n {
+		keep = keep[len(keep)-n:]
+	}
+	return strings.Join(strings.Fields(strings.Join(keep, " | ")), " ")
 }
 
 // SweepStale removes run directories whose owning process is gone: a process

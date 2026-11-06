@@ -464,6 +464,7 @@ func BuildCleanupPlan(in CleanupInput) (*action.Plan, error) {
 		Notices: []string{
 			"Cleanup drops this migration's replication slots, publications and role on the SOURCE and its subscriptions on the TARGET. It never deletes or modifies any user data.",
 			"After cleanup the migration cannot be resumed and the replication state is gone for good. Only continue if you have decided to abandon or have finished with this migration.",
+			"The raw logs of the copy tools (migrations/<id>/logs and work, below the state directory) can contain table rows: pg_restore and pgcopydb quote the row in some error messages. They are deleted by cleanup together with the generated role password file; until then keep that directory private (it is 0700).",
 			"REPLICA IDENTITY FULL, which the migration set on tables without a usable key, is left in place: it is a property of your tables, not something Lockkeeper created. Revert it yourself with ALTER TABLE ... REPLICA IDENTITY DEFAULT if you want.",
 		},
 	}

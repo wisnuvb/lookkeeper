@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/wisnuvb/lockkeeper/internal/action"
@@ -180,6 +181,9 @@ func (s *Service) CleanupMigration(ctx context.Context, o EndOptions) (*EndResul
 	root, _ := s.migrationsRoot()
 	if root != "" {
 		_ = pgnative.PasswordFileFor(root, m.ID).Remove()
+		// The tools' raw logs can quote table rows (see runner.ToolError).
+		_ = os.RemoveAll(filepath.Join(root, m.ID, "logs"))
+		_ = os.RemoveAll(filepath.Join(root, m.ID, "work"))
 	}
 	return res, nil
 }

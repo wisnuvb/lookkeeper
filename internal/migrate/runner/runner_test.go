@@ -4,6 +4,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -218,17 +219,52 @@ while :; do sleep 0.1; done`)
 	}
 }
 
-func TestFailureReportsRedactedTail(t *testing.T) {
+const dataCanary = "CANARY_DATA_ROW_77aa"
+
+// A failing tool's error is persisted (audit log, steps, failed_reason): it must
+// carry the tool, the exit code and the log path only. pg_restore and pgcopydb
+// quote rows of the table in DETAIL and CONTEXT lines.
+func TestFailureErrorNeverCarriesToolOutput(t *testing.T) {
 	r := newRunner(t)
 	run, _ := r.Begin("failing", endpoints())
 	defer run.Close()
-	tool := script(t, `echo "connecting with password=`+canary+`" >&2; echo "fatal: boom" >&2; exit 3`)
+	tool := script(t, `echo "connecting with password=`+canary+`" >&2
+echo "pg_restore: error: COPY failed for table \"secrets\": ERROR:  new row violates check constraint \"trap\"" >&2
+echo "DETAIL:  Failing row contains (1, `+dataCanary+`)." >&2
+echo "CONTEXT:  COPY secrets, line 1: \"1	`+dataCanary+`\"" >&2
+echo "fatal: boom" >&2
+exit 3`)
 	res, err := run.Exec(context.Background(), tool, nil, nil)
 	if err == nil || res.ExitCode != 3 {
 		t.Fatalf("want exit 3 error, got %v (%d)", err, res.ExitCode)
 	}
-	if strings.Contains(err.Error(), canary) || !strings.Contains(err.Error(), "boom") {
-		t.Fatalf("error must carry the redacted tail: %v", err)
+	for _, bad := range []string{canary, dataCanary, "boom", "DETAIL", "Failing row", "check constraint"} {
+		if strings.Contains(err.Error(), bad) {
+			t.Fatalf("the error value must not contain tool output (%q): %v", bad, err)
+		}
+	}
+	if !strings.Contains(err.Error(), "exit status 3") || !strings.Contains(err.Error(), res.LogPath) || !strings.Contains(err.Error(), "tool.sh") {
+		t.Fatalf("the error must name the tool, the exit code and the log: %v", err)
+	}
+
+	// The terminal-only tail drops the lines that can hold data and the password.
+	var te *ToolError
+	if !errors.As(err, &te) {
+		t.Fatalf("want a *ToolError, got %T", err)
+	}
+	tail := te.Tail()
+	if !strings.Contains(tail, "boom") || !strings.Contains(tail, "check constraint") {
+		t.Fatalf("the tail should still help the operator: %q", tail)
+	}
+	for _, bad := range []string{canary, dataCanary, "DETAIL", "CONTEXT", "Failing row"} {
+		if strings.Contains(tail, bad) {
+			t.Fatalf("the tail must not contain %q: %q", bad, tail)
+		}
+	}
+	// The log file keeps everything the tool said except the secrets.
+	raw, _ := os.ReadFile(res.LogPath)
+	if !strings.Contains(string(raw), dataCanary) || strings.Contains(string(raw), canary) {
+		t.Fatalf("the log has the raw output with secrets redacted: %s", raw)
 	}
 }
 

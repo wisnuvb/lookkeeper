@@ -30,10 +30,24 @@ databases:
     # Optional, lets WAL thresholds be judged against disk size:
     # disk_total_gb: 500
 
+  # A MySQL 8.0 / 8.4 server (MariaDB and older MySQL are refused). The port
+  # defaults to 3306 and "database" may be left out. Use a dedicated account that
+  # can only monitor; Lockkeeper warns (see "check") if it can do more:
+  #   CREATE USER 'lockkeeper'@'%' IDENTIFIED BY '...' REQUIRE SSL;
+  #   GRANT PROCESS, REPLICATION CLIENT ON *.* TO 'lockkeeper'@'%';
+  # mysql-main:
+  #   engine: mysql
+  #   host: your-mysql.example.com
+  #   user: lockkeeper
+  #   password: { env: LK_MYSQL_MAIN_PASSWORD }
+  #   tls:
+  #     mode: verify-full
+  #     ca_file: /etc/lockkeeper/mysql-ca.pem
+
 monitor:
   interval: 30s
   retention: 14d
-  # targets: [rds-main]                      # default: every database above
+  # targets: [rds-main, mysql-main]          # default: every database above
   # Dead-man switch: ping a URL while Lockkeeper is healthy, so an external
   # service (for example Healthchecks.io) alerts you if Lockkeeper itself stops.
   # heartbeat:

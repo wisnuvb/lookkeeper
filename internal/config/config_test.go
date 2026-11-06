@@ -83,7 +83,13 @@ func TestParseRejects(t *testing.T) {
 		}), "inline secrets are not allowed"},
 		{"unknown key", base(func(s string) string { return s + "\nbogus: 1\n" }), "bogus"},
 		{"wrong version", base(func(s string) string { return strings.Replace(s, "version: 1", "version: 2", 1) }), "version: must be 1"},
-		{"mysql not yet", base(func(s string) string { return strings.Replace(s, "engine: postgres", "engine: mysql", 1) }), "mysql is not supported yet"},
+		{"unknown engine", base(func(s string) string { return strings.Replace(s, "engine: postgres", "engine: oracle", 1) }), `must be "postgres" or "mysql"`},
+		{"mysql weak tls remote", base(func(s string) string {
+			return strings.Replace(strings.Replace(s, "engine: postgres", "engine: mysql", 1), "mode: verify-full", "mode: require", 1)
+		}), "does not authenticate the server"},
+		{"mysql verify-ca needs ca_file", base(func(s string) string {
+			return strings.Replace(strings.Replace(s, "engine: postgres", "engine: mysql", 1), "tls: { mode: verify-full, ca_file: /etc/lockkeeper/ca.pem }", "tls: { mode: verify-ca }", 1)
+		}), "ca_file: required for verify-ca"},
 		{"weak tls remote", base(func(s string) string { return strings.Replace(s, "mode: verify-full", "mode: require", 1) }), "does not authenticate the server"},
 		{"read_only false", base(func(s string) string { return strings.Replace(s, "read_only: true", "read_only: false", 1) }), "always read-only"},
 		{"unknown target", base(func(s string) string {
@@ -141,6 +147,60 @@ func TestInsecureTLSOptInWarnsAndLoopbackIsExempt(t *testing.T) {
 	).Replace(validYAML)
 	if _, _, err := Parse([]byte(local)); err != nil {
 		t.Errorf("loopback with tls disabled must be accepted: %v", err)
+	}
+}
+
+func TestMySQLEngineDefaults(t *testing.T) {
+	const yamlText = `
+version: 1
+databases:
+  my:
+    engine: mysql
+    host: db.example.com
+    user: lockkeeper
+    password: { env: LK_MY_PASSWORD }
+  pg:
+    engine: postgres
+    host: db2.example.com
+    user: lockkeeper
+    password: { env: LK_PG_PASSWORD }
+`
+	cfg, _, err := Parse([]byte(yamlText))
+	if err != nil {
+		t.Fatalf("mysql engine must be accepted: %v", err)
+	}
+	my := cfg.Databases["my"]
+	if my.Port != 3306 || my.Database != "" || my.TLS.Mode != TLSVerifyFull {
+		t.Errorf("mysql defaults wrong: %+v", my)
+	}
+	pg := cfg.Databases["pg"]
+	if pg.Port != 5432 || pg.Database != "postgres" {
+		t.Errorf("postgres defaults must be unchanged: %+v", pg)
+	}
+
+	// An explicit port and database are kept.
+	cfg, _, err = Parse([]byte(strings.Replace(yamlText, "engine: mysql", "engine: mysql\n    port: 3307\n    database: app", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if my := cfg.Databases["my"]; my.Port != 3307 || my.Database != "app" {
+		t.Errorf("explicit values must be kept: %+v", my)
+	}
+}
+
+func TestMySQLLoopbackMayDisableTLS(t *testing.T) {
+	const yamlText = `
+version: 1
+databases:
+  my:
+    engine: mysql
+    host: 127.0.0.1
+    user: lockkeeper
+    password: { env: LK_MY_PASSWORD }
+    tls: { mode: disable }
+`
+	if _, _, err := Parse([]byte(yamlText)); err != nil {
+		t.Fatalf("loopback with tls disabled must be accepted: %v", err)
 	}
 }
 

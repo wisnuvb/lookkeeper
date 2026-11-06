@@ -67,6 +67,8 @@ type Monitor struct {
 	Retention    Duration   `yaml:"retention"`
 	Targets      []string   `yaml:"targets"`
 	Heartbeat    *Heartbeat `yaml:"heartbeat"`
+	// Metrics enables the optional Prometheus endpoint (off when absent).
+	Metrics *Metrics `yaml:"metrics"`
 }
 
 // Heartbeat is an optional dead-man ping: Lockkeeper GETs the URL on every

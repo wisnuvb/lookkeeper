@@ -62,6 +62,14 @@ func peerFor(opts MigrateOptions, src config.Database) (pgnative.Peer, error) {
 	if p.SSLMode == "" {
 		p.SSLMode = tlsMode(src)
 	}
+	// A whitelist: the password of the migration role travels over this
+	// connection, and libpq's allow/prefer would fall back to plaintext.
+	switch p.SSLMode {
+	case config.TLSVerifyFull, config.TLSVerifyCA:
+	case config.TLSRequire, config.TLSDisable:
+	default:
+		return p, fmt.Errorf("the subscription sslmode %q is not supported: use verify-full or verify-ca (or, for a loopback peer or with tls.allow_insecure, require or disable)", p.SSLMode)
+	}
 	if !config.IsLocalHost(p.Host) && (p.SSLMode == config.TLSDisable || p.SSLMode == config.TLSRequire) && !src.TLS.AllowInsecure {
 		return p, fmt.Errorf("the target would connect to the source at %s:%d with sslmode=%s, which does not authenticate the server (or uses no TLS): use verify-full or verify-ca (with --source-peer-sslrootcert, the CA file path on the TARGET server), or set tls.allow_insecure on the source connection to accept the risk", p.Host, p.Port, p.SSLMode)
 	}

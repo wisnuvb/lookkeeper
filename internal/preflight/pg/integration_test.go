@@ -75,7 +75,17 @@ func TestPreflightAgainstContainers(t *testing.T) {
 
 	t.Run("findings on the target and across both", func(t *testing.T) {
 		expect(t, rep, "connect.target", preflight.OK, nil)
-		expect(t, rep, "version.order", preflight.OK, nil) // both servers run the same image
+		wantOrder := preflight.OK
+		var sv, tv int
+		_ = src.Admin(t).QueryRow(ctx, "SELECT current_setting('server_version_num')::int / 10000").Scan(&sv)
+		_ = tgt.Admin(t).QueryRow(ctx, "SELECT current_setting('server_version_num')::int / 10000").Scan(&tv)
+		switch {
+		case tv < sv:
+			wantOrder = preflight.Blocker
+		case tv > sv:
+			wantOrder = preflight.Info
+		}
+		expect(t, rep, "version.order", wantOrder, nil)
 		expect(t, rep, "target.subscription_privilege", preflight.OK, []string{"superuser"})
 		expect(t, rep, "target.max_logical_replication_workers", preflight.OK, []string{"needs 3"})
 		expect(t, rep, "target.logging", preflight.OK, nil)
@@ -147,7 +157,11 @@ func TestPreflightAgainstContainers(t *testing.T) {
 		}
 		expect(t, r, "source.replication_privilege", preflight.Blocker, []string{"lk_mon"}, `ALTER ROLE "lk_mon" REPLICATION`)
 		expect(t, r, "source.read_privilege", preflight.Blocker, []string{"cannot read", "app: public."}, "pg_read_all_data")
-		expect(t, r, "target.subscription_privilege", preflight.Blocker, []string{"lk_t"}, "GRANT")
+		expect(t, r, "target.subscription_privilege", preflight.Blocker, []string{"lk_t"})
+		// PostgreSQL 16 added pg_create_subscription; before that only a superuser may subscribe.
+		if rem := finding(t, r, "target.subscription_privilege").Remediation; !strings.Contains(rem, "GRANT pg_create_subscription") && !strings.Contains(rem, "SUPERUSER") {
+			t.Errorf("remediation names no usable fix: %s", rem)
+		}
 		// pg_monitor sees every session, so the DDL probe is counted exactly.
 		expect(t, r, "source.ddl_activity", preflight.Info, []string{"1 session"})
 

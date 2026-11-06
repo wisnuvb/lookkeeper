@@ -2,11 +2,16 @@ package service
 
 import (
 	"context"
+	"crypto/x509"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/wisnuvb/lockkeeper/internal/alert/notify"
+	"github.com/wisnuvb/lockkeeper/internal/config"
 	"github.com/wisnuvb/lockkeeper/internal/model"
 )
 
@@ -31,7 +36,46 @@ func (s *Service) buildChannels(ctx context.Context) (map[string]notify.Notifier
 		}
 		out["slack"] = wrap(&notify.Slack{Webhook: hook, Client: s.httpClient()})
 	}
+	if em := s.cfg.Alerts.Channels.Email; em != nil {
+		n, err := s.newEmail(ctx, em)
+		if err != nil {
+			return nil, err
+		}
+		out["email"] = wrap(n)
+	}
 	return out, nil
+}
+
+// newEmail builds the SMTP notifier. The password is resolved here, registered
+// with the redactor, and held only in a secret.Value.
+func (s *Service) newEmail(ctx context.Context, em *config.Email) (*notify.Email, error) {
+	n := &notify.Email{
+		Host: em.Host, Port: em.Port, TLS: em.TLS, Username: em.Username,
+		From: em.From, To: em.To, AllowInsecure: em.AllowInsecure, Now: s.deps.Now,
+	}
+	if !em.Password.IsZero() {
+		pw, err := s.resolveSecret(ctx, em.Password, "email password")
+		if err != nil {
+			return nil, err
+		}
+		n.Password = pw
+	}
+	if em.CAFile != "" {
+		pem, err := os.ReadFile(em.CAFile)
+		if err != nil {
+			var pe *fs.PathError
+			if errors.As(err, &pe) {
+				err = pe.Err
+			}
+			return nil, fmt.Errorf("alerts.channels.email.ca_file %s: %w", em.CAFile, err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("alerts.channels.email.ca_file %s: no PEM certificates found", em.CAFile)
+		}
+		n.RootCAs = pool
+	}
+	return n, nil
 }
 
 // buildRoutes turns the configured routes into dispatcher routes. With no routes

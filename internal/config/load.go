@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/wisnuvb/lockkeeper/internal/alert/notify"
 )
 
 // TLS modes.
@@ -23,6 +25,13 @@ const (
 	TLSVerifyCA   = "verify-ca"
 	TLSRequire    = "require"
 	TLSDisable    = "disable"
+)
+
+// Email TLS modes.
+const (
+	EmailStartTLS = "starttls"
+	EmailTLS      = "tls"
+	EmailNone     = "none"
 )
 
 // EnginePostgres is the only engine supported by the collectors so far.
@@ -86,6 +95,17 @@ func pathOnly(err error) error {
 }
 
 func (c *Config) applyDefaults() {
+	if e := c.Alerts.Channels.Email; e != nil {
+		if e.TLS == "" {
+			e.TLS = EmailStartTLS
+		}
+		if e.Port == 0 {
+			e.Port = 587
+			if e.TLS == EmailTLS {
+				e.Port = 465
+			}
+		}
+	}
 	for name, db := range c.Databases {
 		if db.Port == 0 {
 			db.Port = 5432
@@ -135,6 +155,9 @@ func (c *Config) ChannelNames() []string {
 	}
 	if c.Alerts.Channels.Slack != nil {
 		out = append(out, "slack")
+	}
+	if c.Alerts.Channels.Email != nil {
+		out = append(out, "email")
 	}
 	return out
 }
@@ -253,6 +276,10 @@ func (c *Config) Validate() (warnings []string, err error) {
 			add("alerts.channels.slack.webhook_url: %v", err)
 		}
 	}
+	if e := c.Alerts.Channels.Email; e != nil {
+		channels["email"] = true
+		warnings = append(warnings, c.validateEmail(e, add)...)
+	}
 	for i, r := range c.Alerts.Routes {
 		if len(r.To) == 0 {
 			add("alerts.routes[%d].to: at least one channel is required", i)
@@ -276,6 +303,61 @@ func (c *Config) Validate() (warnings []string, err error) {
 	}
 
 	return warnings, errors.Join(errs...)
+}
+
+// validateEmail checks the email channel and returns non-fatal warnings.
+func (c *Config) validateEmail(e *Email, add func(string, ...any)) (warnings []string) {
+	const p = "alerts.channels.email"
+	switch {
+	case e.Host == "":
+		add("%s.host: required", p)
+	case strings.ContainsAny(e.Host, "/@ \t\r\n"):
+		add("%s.host: must be a host name or IP address", p)
+	}
+	if e.Port < 1 || e.Port > 65535 {
+		add("%s.port: must be 1-65535 (got %d)", p, e.Port)
+	}
+	switch e.TLS {
+	case EmailStartTLS, EmailTLS:
+	case EmailNone:
+		if e.Host != "" && !IsLocalHost(e.Host) {
+			switch {
+			case !e.AllowInsecure:
+				add("%s.tls: \"none\" sends mail unencrypted and is refused for remote host %q; use starttls or tls, or set allow_insecure: true to accept the risk", p, e.Host)
+			case e.Username != "":
+				add("%s.username: credentials are never sent over an unencrypted connection to a remote host; use starttls or tls, or remove username and password", p)
+			default:
+				warnings = append(warnings, fmt.Sprintf("%s: tls \"none\" with allow_insecure sends alert text unencrypted to %q; anyone on the path can read or alter it", p, e.Host))
+			}
+		}
+	default:
+		add("%s.tls: must be one of starttls, tls, none (got %q)", p, e.TLS)
+	}
+	switch {
+	case e.Username != "" && e.Password.IsZero():
+		add("%s.password: required when username is set; use { env: NAME } or { file: PATH }", p)
+	case e.Username == "" && !e.Password.IsZero():
+		add("%s.username: required when password is set", p)
+	case !e.Password.IsZero():
+		if err := e.Password.Validate(); err != nil {
+			add("%s.password: %v", p, err)
+		}
+	}
+	if err := notify.ParseEmailAddress(e.From); err != nil {
+		add("%s.from: %v", p, err)
+	}
+	if len(e.To) == 0 {
+		add("%s.to: at least one recipient is required", p)
+	}
+	for i, t := range e.To {
+		if err := notify.ParseEmailAddress(t); err != nil {
+			add("%s.to[%d]: %v", p, i, err)
+		}
+	}
+	if e.CAFile != "" && e.TLS == EmailNone {
+		warnings = append(warnings, p+".ca_file: ignored with tls: none")
+	}
+	return warnings
 }
 
 // IsLocalHost reports whether host is a loopback address, "localhost", or a

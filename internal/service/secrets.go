@@ -36,6 +36,9 @@ func (s *Service) VerifySecrets(ctx context.Context) SecretCheck {
 	if sl := s.cfg.Alerts.Channels.Slack; sl != nil {
 		items = append(items, item{"alerts.channels.slack.webhook_url", sl.WebhookURL})
 	}
+	if em := s.cfg.Alerts.Channels.Email; em != nil && !em.Password.IsZero() {
+		items = append(items, item{"alerts.channels.email.password", em.Password})
+	}
 	if hb := s.cfg.Monitor.Heartbeat; hb != nil {
 		items = append(items, item{"monitor.heartbeat.url", hb.URL})
 	}

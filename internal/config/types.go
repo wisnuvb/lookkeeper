@@ -92,6 +92,7 @@ type Alerts struct {
 type Channels struct {
 	Telegram *Telegram `yaml:"telegram"`
 	Slack    *Slack    `yaml:"slack"`
+	Email    *Email    `yaml:"email"`
 }
 
 // Telegram posts through a bot.
@@ -103,6 +104,24 @@ type Telegram struct {
 // Slack posts through an incoming webhook.
 type Slack struct {
 	WebhookURL secret.Ref `yaml:"webhook_url"`
+}
+
+// Email sends alerts through an SMTP server. Port defaults to 587 (465 for
+// tls: tls) and TLS to starttls.
+type Email struct {
+	Host string `yaml:"host"`
+	Port int    `yaml:"port"`
+	// TLS is starttls (default), tls (implicit TLS) or none.
+	TLS      string     `yaml:"tls"`
+	Username string     `yaml:"username"`
+	Password secret.Ref `yaml:"password"`
+	From     string     `yaml:"from"`
+	To       []string   `yaml:"to"`
+	// CAFile is an optional PEM bundle used instead of the system roots to
+	// verify the server certificate.
+	CAFile string `yaml:"ca_file"`
+	// AllowInsecure must be true for tls: none towards a non-loopback host.
+	AllowInsecure bool `yaml:"allow_insecure"`
 }
 
 // Route sends matching events to channels.

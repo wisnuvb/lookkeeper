@@ -47,6 +47,19 @@ alerts:
       chat_id: "123456789"
     # slack:
     #   webhook_url: { env: LK_SLACK_WEBHOOK }
+    # SMTP email. The server certificate is always verified (use ca_file for a
+    # private CA). tls: starttls (port 587, default), tls (implicit, port 465)
+    # or none (only for a local relay; refused for remote hosts unless you also
+    # set allow_insecure: true, and credentials are never sent unencrypted).
+    # email:
+    #   host: smtp.example.com
+    #   port: 587
+    #   tls: starttls
+    #   username: alerts@example.com
+    #   password: { env: LK_SMTP_PASSWORD }
+    #   from: Lockkeeper <alerts@example.com>
+    #   to: [ops@example.com]
+    #   # ca_file: /etc/lockkeeper/smtp-ca.pem
   # With no routes, every alert goes to every channel.
   # routes:
   #   - match: { severity: [critical] }

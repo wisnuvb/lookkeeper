@@ -167,7 +167,11 @@ func TestMySQLConfigTLSUsesSharedPolicy(t *testing.T) {
 	if _, err := MySQLConfig(mysqlSpec(func(s *MySQLSpec) { s.TLSMode = "bogus" })); err == nil {
 		t.Error("unknown TLS mode must fail")
 	}
-	if _, err := MySQLConfig(mysqlSpec(func(s *MySQLSpec) { s.Host = "db.example.com"; s.TLSMode = "verify-full"; s.CAFile = "/nonexistent/ca.pem" })); err == nil {
+	if _, err := MySQLConfig(mysqlSpec(func(s *MySQLSpec) {
+		s.Host = "db.example.com"
+		s.TLSMode = "verify-full"
+		s.CAFile = "/nonexistent/ca.pem"
+	})); err == nil {
 		t.Error("a missing CA file must fail")
 	}
 }

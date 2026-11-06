@@ -76,9 +76,11 @@ func (fakeDriver) Open(string) (driver.Conn, error) { return nil, fmt.Errorf("no
 
 type fakeConn struct{ srv *fakeServer }
 
-func (c *fakeConn) Prepare(string) (driver.Stmt, error) { return nil, fmt.Errorf("prepare not supported") }
-func (c *fakeConn) Close() error                        { return nil }
-func (c *fakeConn) Begin() (driver.Tx, error)           { return nil, fmt.Errorf("begin not supported") }
+func (c *fakeConn) Prepare(string) (driver.Stmt, error) {
+	return nil, fmt.Errorf("prepare not supported")
+}
+func (c *fakeConn) Close() error              { return nil }
+func (c *fakeConn) Begin() (driver.Tx, error) { return nil, fmt.Errorf("begin not supported") }
 
 func (c *fakeConn) QueryContext(_ context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
 	c.srv.mu.Lock()

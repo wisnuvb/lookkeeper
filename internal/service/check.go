@@ -7,6 +7,7 @@ import (
 
 	"github.com/wisnuvb/lockkeeper/internal/alert/rules"
 	"github.com/wisnuvb/lockkeeper/internal/collector/pg"
+	"github.com/wisnuvb/lockkeeper/internal/config"
 	"github.com/wisnuvb/lockkeeper/internal/model"
 )
 
@@ -98,7 +99,7 @@ func (s *Service) checkOne(ctx context.Context, engine *rules.Engine, name strin
 		tr.Error = s.redactErr(err).Error()
 	}
 	for _, sm := range samples {
-		if sm.Metric == rules.MetricPGUp && sm.Value == 1 {
+		if (sm.Metric == rules.MetricPGUp || sm.Metric == rules.MetricMySQLUp) && sm.Value == 1 {
 			tr.Up = true
 		}
 	}
@@ -134,6 +135,9 @@ func (s *Service) checkOne(ctx context.Context, engine *rules.Engine, name strin
 func (s *Service) SlotsList(ctx context.Context, target string) ([]pg.Slot, error) {
 	if err := s.validateTargets([]string{target}); err != nil {
 		return nil, err
+	}
+	if engine := s.cfg.Databases[target].Engine; engine != config.EnginePostgres {
+		return nil, fmt.Errorf("replication slots are a PostgreSQL concept and do not apply to %s target %q", engine, target)
 	}
 	conn, err := s.openFunc(target)(ctx)
 	if err != nil {

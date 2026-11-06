@@ -15,9 +15,8 @@ type execCall struct{ sql string }
 
 // fakeConn records executed SQL.
 type fakeConn struct {
-	calls   []execCall
-	failOn  string
-	satisfy bool
+	calls  []execCall
+	failOn string
 }
 
 func (f *fakeConn) Exec(_ context.Context, sql string, _ ...any) (pgconn.CommandTag, error) {

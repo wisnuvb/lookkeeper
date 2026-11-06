@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/wisnuvb/lockkeeper/internal/action"
 	"github.com/wisnuvb/lockkeeper/internal/config"
 	"github.com/wisnuvb/lockkeeper/internal/dbconn"
 	"github.com/wisnuvb/lockkeeper/internal/migrate/machine"
@@ -192,6 +193,48 @@ func TestConfigEditedAfterApprovalIsRefusedBeforeAnyConnection(t *testing.T) {
 		}
 	})
 	_ = os.Remove
+}
+
+// Abort and cleanup take the driver lock before they read the state and build
+// the plan: while another process holds the lock, nobody is asked to approve
+// anything and nothing is connected.
+func TestAbortAndCleanupTakeTheLockBeforePlanningAndApproving(t *testing.T) {
+	for _, name := range []string{"abort", "cleanup"} {
+		t.Run(name, func(t *testing.T) {
+			state := machine.SourceChangesApproved
+			if name == "cleanup" {
+				state = machine.Aborted
+			}
+			f := newMigrateFixture(t, state)
+			svc := f.service(migrateCfgYAML)
+			mdir, err := svc.migrationDir(f.id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			held, _, err := machine.AcquireLock(filepath.Join(mdir, "driver.lock"), svc.deps.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer held.Release()
+			asked := 0
+			o := EndOptions{MigrationID: f.id, Apply: true, Approver: func(*action.Plan) (action.Approval, error) {
+				asked++
+				return action.Approval{}, errors.New("must not be asked")
+			}}
+			var runErr error
+			if name == "abort" {
+				_, runErr = svc.AbortMigration(context.Background(), o)
+			} else {
+				_, runErr = svc.CleanupMigration(context.Background(), o)
+			}
+			if !errors.Is(runErr, machine.ErrLocked) {
+				t.Fatalf("want the lock error, got %v", runErr)
+			}
+			if asked != 0 {
+				t.Fatalf("the operator was asked to approve a plan %d time(s) before the lock was held", asked)
+			}
+		})
+	}
 }
 
 // The CA file the tools use is part of what the plan shows and hashes.

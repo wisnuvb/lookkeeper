@@ -26,11 +26,64 @@ func (s *Service) lockMigration(id string) (*machine.Lock, error) {
 	return lock, nil
 }
 
-// AbortMigration stops our consumption: it disables the subscriptions on the
+// AbortMigration stops our consumption: it disables the subscriptions (see
+// abortOnce). Applying takes the driver lock FIRST and only then reads the
+// state and builds the plan again, so the plan that is approved and run is the
+// one for the state that holds while nobody else can move the migration.
+func (s *Service) AbortMigration(ctx context.Context, o EndOptions) (*EndResult, error) {
+	if !o.Apply {
+		return s.abortOnce(ctx, o, false)
+	}
+	id, err := s.resolveMigrationID(ctx, o)
+	if err != nil {
+		return nil, err
+	}
+	lock, err := s.lockMigration(id)
+	if err != nil {
+		return nil, err
+	}
+	defer lock.Release()
+	return s.abortOnce(ctx, o, true)
+}
+
+// resolveMigrationID finds which migration a command is about, without reading
+// anything else, so that the lock can be taken before the state is looked at.
+func (s *Service) resolveMigrationID(ctx context.Context, o EndOptions) (string, error) {
+	st, err := s.openState(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer st.Close()
+	m, err := findMigration(ctx, st, o.PlanHash, o.MigrationID)
+	if err != nil {
+		return "", err
+	}
+	return m.ID, nil
+}
+
+// CleanupMigration drops exactly this migration's objects (see cleanupOnce),
+// with the same lock-first ordering as AbortMigration.
+func (s *Service) CleanupMigration(ctx context.Context, o EndOptions) (*EndResult, error) {
+	if !o.Apply {
+		return s.cleanupOnce(ctx, o, false)
+	}
+	id, err := s.resolveMigrationID(ctx, o)
+	if err != nil {
+		return nil, err
+	}
+	lock, err := s.lockMigration(id)
+	if err != nil {
+		return nil, err
+	}
+	defer lock.Release()
+	return s.cleanupOnce(ctx, o, true)
+}
+
+// abortOnce does the work of AbortMigration: it disables the subscriptions on the
 // target and marks the migration aborted. It leaves the source's slots and
 // publications exactly as they are (dropping them is `cleanup`, a separate
 // confirmed step) and never touches data. Dry run unless Apply.
-func (s *Service) AbortMigration(ctx context.Context, o EndOptions) (*EndResult, error) {
+func (s *Service) abortOnce(ctx context.Context, o EndOptions, apply bool) (*EndResult, error) {
 	st, err := s.openState(ctx)
 	if err != nil {
 		return nil, err
@@ -57,8 +110,8 @@ func (s *Service) AbortMigration(ctx context.Context, o EndOptions) (*EndResult,
 	if err != nil {
 		return nil, err
 	}
-	res := &EndResult{MigrationID: m.ID, Plan: plan, DryRun: !o.Apply, Lines: action.DryRun(plan, action.PhaseAbort), State: cur}
-	if !o.Apply {
+	res := &EndResult{MigrationID: m.ID, Plan: plan, DryRun: !apply, Lines: action.DryRun(plan, action.PhaseAbort), State: cur}
+	if !apply {
 		return res, nil
 	}
 	if o.Approver == nil {
@@ -72,11 +125,6 @@ func (s *Service) AbortMigration(ctx context.Context, o EndOptions) (*EndResult,
 	if err != nil {
 		return res, err
 	}
-	lock, err := s.lockMigration(m.ID)
-	if err != nil {
-		return res, err
-	}
-	defer lock.Release()
 	conns, err := s.newMigrateConns(ctx, l.in.Source.Name, l.in.Target.Name)
 	if err != nil {
 		return res, err
@@ -92,12 +140,12 @@ func (s *Service) AbortMigration(ctx context.Context, o EndOptions) (*EndResult,
 	return res, nil
 }
 
-// CleanupMigration drops exactly what this migration created: subscriptions on
+// cleanupOnce does the work of CleanupMigration: it drops exactly what this migration created: subscriptions on
 // the target, then slots, publications and the role on the source, each only if
 // it carries the migration's name and marker. It refuses unless the migration
 // was aborted (Phase 4 adds the verified-cutover path), needs the exact plan
 // hash or a typed phrase, and never touches user data. Dry run unless Apply.
-func (s *Service) CleanupMigration(ctx context.Context, o EndOptions) (*EndResult, error) {
+func (s *Service) cleanupOnce(ctx context.Context, o EndOptions, apply bool) (*EndResult, error) {
 	st, err := s.openState(ctx)
 	if err != nil {
 		return nil, err
@@ -137,8 +185,8 @@ func (s *Service) CleanupMigration(ctx context.Context, o EndOptions) (*EndResul
 	if err != nil {
 		return nil, err
 	}
-	res := &EndResult{MigrationID: m.ID, Plan: plan, DryRun: !o.Apply, Lines: action.DryRun(plan, action.PhaseCleanup), State: cur}
-	if !o.Apply {
+	res := &EndResult{MigrationID: m.ID, Plan: plan, DryRun: !apply, Lines: action.DryRun(plan, action.PhaseCleanup), State: cur}
+	if !apply {
 		return res, nil
 	}
 	if o.Approver == nil {
@@ -152,11 +200,6 @@ func (s *Service) CleanupMigration(ctx context.Context, o EndOptions) (*EndResul
 	if err != nil {
 		return res, err
 	}
-	lock, err := s.lockMigration(m.ID)
-	if err != nil {
-		return res, err
-	}
-	defer lock.Release()
 	ss := machine.SQLStore{DB: st, Actor: actor(), Now: s.deps.Now}
 	switch cur {
 	case machine.Aborted:

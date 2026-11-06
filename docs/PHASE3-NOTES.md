@@ -77,3 +77,101 @@ index digest). Source `wal_level=logical`, target default settings, on a private
   the pg_dump route needs no tool beyond the PostgreSQL client package.
 - Tests run bulk-copy tools in containers on the private network (the host has no suitable
   `pg_dump`/`pgcopydb`); production runs them as local processes through the same runner.
+
+## 2. What was built
+
+Packages (all new unless marked): `internal/action` (Action, Plan with canonical JSON and SHA-256,
+typed or hash confirmation, executor with intent-before-effect audit), `internal/store` (schema v2,
+**edited**: `store.go` gets one appended migration entry; new files `schema_migrate.go`,
+`migrations.go`), `internal/migrate` (shared types), `migrate/runner` (process runner),
+`migrate/copier` (pgcopydb and pg_dump/pg_restore behind `migrate.Copier`), `migrate/machine` (state
+machine, driver, lease, lock file), `migrate/pgnative` (plans, discovery and privilege checks, slot
+handoff, subscription readers, engine), `migrate/itest` (end-to-end tests), `dbconn/migrate.go` (the
+only read-write and the replication openers), `service/migrate_*.go`, `cli/migrate.go`, and test
+helpers in `internal/testutil` (private network, containerised tool launcher, writers).
+Edits to existing files: `service/service.go` (two `Deps` fields), `cli/root.go` (passes the version).
+
+### 2.1 How a migration runs
+
+`migrate plan` runs the pre-flight (BLOCKER findings refuse), reads both servers read-only, checks the
+roles' privileges, and prints the plan and its hash. It writes only a draft to the local state
+database. The migration id (`m` + 8 hex) is derived from the plan's inputs, so planning the same thing
+again gives the same hash, and everything Lockkeeper creates carries that id.
+`apply-source-changes` (dry run by default) creates the per-migration role, `REPLICA IDENTITY FULL` where
+needed and one publication per database. `start` creates, per database, a slot with an exported
+snapshot, copies inside it, drops the publication the schema copy brought along, creates the
+subscription (`create_slot=false, copy_data=false, enabled=false`) and enables it, then waits until the
+lag is within `--max-lag` for `--caught-up-for`. `resume` first reconciles with the servers.
+`abort` disables the subscriptions only. `cleanup` (after abort only) drops exactly this migration's
+subscriptions, slots, publications and role, each checked by name and marker.
+
+### 2.2 Decisions made while building (each is open to the owner)
+
+1. **Table list, not FOR ALL TABLES.** The publication lists the permanent ordinary tables and leaf
+   partitions explicitly (no superuser needed, deterministic plan). A table created after approval is
+   refused as schema drift before `apply` and before `start`.
+2. **The publication must exist before the slot** (changes decoded before a table is published are not
+   sent); the plan order enforces it. The schema copy brings the publication to the target;
+   `pg_dump --no-publications` avoids it for the pg_dump copier, and a plan action drops it for
+   pgcopydb (which cannot be told).
+3. **Per-migration role, SCRAM verifier.** `CREATE ROLE ... PASSWORD '<SCRAM verifier>'`: the clear
+   password never reaches the source (statement log, pg_stat_statements). It lives in a 0600 file in the
+   0700 migration directory until `cleanup`, and in the target's `pg_subscription` (superusers only).
+   On a target that is not a superuser the `SET log_statement` mitigations are impossible; the plan says so.
+4. **Recovery instead of slot reuse** (1.1 d3): `resume` shows a recovery plan (drop the subscription and
+   old slot, `DROP DATABASE ... WITH (FORCE)` and recreate the target database with its properties, copy
+   again under a new slot `..._a2`). It is applied only with `--recovery-plan-hash` or a typed phrase. A
+   crash that loses the "copy finished" marker is treated the same way (conservative). The marker is
+   written right after the copy returns, before the step result, to keep that window tiny.
+5. **Approval model.** `apply-source-changes --plan-hash H --apply` is the approval of the whole plan,
+   including `start`; its method and approver are in the audit log (`plan.approved`) and `start` reads
+   them back. `abort`, `cleanup` and recovery have their own plans and hashes. There is no `--yes`.
+6. **Plan input is stored** (`migrations.input_json`, no secrets) so the plan can be rebuilt exactly after
+   the source changed (a table that now has `REPLICA IDENTITY FULL` would otherwise change the plan).
+   Every command re-derives the plan from it and refuses if it no longer hashes to the stored hash.
+7. **Audit table is `audit_events`**, not `events`: `events` already holds alert events that retention
+   prunes.
+8. **Two address views.** Lockkeeper and its tools use the configured address; the subscription (target
+   to source) uses `--source-peer-addr/--source-peer-sslmode/--source-peer-sslrootcert`, because the two
+   can differ (tunnel, VPN). A peer that would not authenticate the source is refused unless the source
+   connection has `tls.allow_insecure`.
+9. **Caught up** = every database within `--max-lag` (default 4 MiB, measured as source WAL position
+   minus the slot's confirmed flush) with a running apply worker for `--caught-up-for` (default 2 min).
+10. **No `migrations:` config section** (SPEC section 7): tool locations and options are flags.
+    Adding the section means touching `internal/config`.
+
+### 2.3 Tests
+
+- Unit: action tamper tests (one SQL character, endpoint, database entry, order, notice, version all
+  change the hash and `Authorize` refuses), store (CAS, lease, append-only triggers, upgrade from schema
+  v1 keeps data and the pre-upgrade backup), state table and guards for every pair, runner (empty env,
+  modes, `ps`, SIGTERM then SIGKILL of the process group), copiers, plan content, SCRAM, password file.
+- Crash injection (`machine/driver_test.go`): the driver is "killed" at every persistence boundary (one
+  test per boundary, 30+) and inside the copy; resume reaches `caught_up` with every effect exactly once
+  per attempt. A mutation of the recovery rule makes it fail.
+- Integration (`migrate/itest`, real CLI in-process, containers for servers and tools): happy path under
+  concurrent writes with row-level md5 equality, abort/cleanup with decoy slots/publication/role,
+  kill mid-copy (tool killed; driver cancelled) and resume through the recovery plan, kill during
+  following with a broken replication connection, plan tamper/drift/typed confirmation/missing
+  privileges, canary scan, `REPLICA IDENTITY FULL`.
+
+## 3. Not verified, known risks, open questions
+
+- **Nothing was run against RDS**: `rds_replication` instead of `REPLICATION`, `rds_superuser`
+  detection, the SCRAM verifier on RDS, parameter-group changes, the TLS and security-group path from
+  the target, `DROP DATABASE ... WITH (FORCE)` on a managed target. These come from documentation.
+- Only arm64 containers on macOS were used; Linux and amd64 are untested.
+- `pgcopydb copy sequences` and `compare` (Phase 4) were never exercised. The sequence values the copy
+  sets are the live ones, ahead of the data; the final handling is Phase 4.
+- `CREATE_REPLICATION_SLOT` waits for open transactions: a long transaction on the source delays `start`
+  (`--slot-timeout`, default 10 minutes, bounds it).
+- If `pg_stat_statements` is loaded on the target it keeps the `CREATE SUBSCRIPTION` text including the
+  migration password (plan notice). The role is per migration and dropped at cleanup.
+- Recovery drops and recreates a target database: it relies on the target having been empty at plan time
+  (checked then) and on the operator's confirmation. It does not prove the database holds only our copy.
+- `REPLICA IDENTITY FULL` takes a brief ACCESS EXCLUSIVE lock per table (`lock_timeout` 10s, so it fails
+  instead of blocking) and is not reverted by cleanup (stated in the cleanup plan).
+- Open questions for the owner: the default for `--max-lag`/`--caught-up-for`; whether `cleanup` should
+  also be allowed from `caught_up` after Phase 4 only; whether to add the SPEC `migrations:` config block;
+  whether `abort` of a running migration should be allowed to stop the driver itself (now it refuses and
+  asks you to stop it); the policy for an optional `guardrail.action: drop_slot` (not built).

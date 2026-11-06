@@ -95,6 +95,32 @@ func TestPlanTamperDriftAndTypedConfirmation(t *testing.T) {
 	}
 }
 
+// A table that appears on the target after the plan was made is not the partial
+// copy of a migration: start must refuse and must not offer a recovery plan
+// (which would DROP the target database).
+func TestTargetThatIsNotEmptyIsNeverRecovered(t *testing.T) {
+	r := newRig(t, copierKinds()[0], rigOptions{})
+	hash, id := r.plan()
+	if o := r.apply(hash); o.code != 0 {
+		t.Fatalf("apply: %s", o.all())
+	}
+	mustExec(t, r.tgt.AdminDB(t, "app"), `CREATE TABLE precious (id int)`)
+	mustExec(t, r.tgt.AdminDB(t, "app"), `INSERT INTO precious VALUES (1)`)
+	o := r.run(r.startArgs(id, "--no-wait")...)
+	if o.code == 0 || !strings.Contains(o.all(), "refusing to plan a DROP DATABASE") {
+		t.Fatalf("start must refuse (%d):\n%s", o.code, o.all())
+	}
+	if strings.Contains(o.all(), "Recovery plan") || strings.Contains(o.all(), "recovery-plan-hash") {
+		t.Fatalf("a recovery plan must not be offered:\n%s", o.all())
+	}
+	if n := targetCount(t, r, "app", `SELECT count(*) FROM precious`); n != 1 {
+		t.Fatal("the target's own table must be untouched")
+	}
+	if n := count(t, r, "app", `SELECT count(*) FROM pg_replication_slots WHERE slot_name LIKE 'lk\_`+id+`\_%'`); n != 0 {
+		t.Fatalf("no slot may be created: %d", n)
+	}
+}
+
 // TestRolesWithoutPrivilegesFailBeforeAnyChange uses a source role that cannot
 // replicate: planning must fail with a clear message and change nothing.
 func TestRolesWithoutPrivilegesFailBeforeAnyChange(t *testing.T) {

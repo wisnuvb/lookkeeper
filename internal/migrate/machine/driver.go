@@ -19,6 +19,9 @@ type Store interface {
 	MarkFailed(ctx context.Context, id string, from State, step string, resumable bool, reason string) error
 	BeginStep(ctx context.Context, id, db, name string, attempt int, detail string) (int64, error)
 	FinishStep(ctx context.Context, stepID int64, status, detail, errText string) error
+	// StepStarted reports whether the intent of step `name` was ever recorded
+	// for database db (any attempt, any result).
+	StepStarted(ctx context.Context, id, db, name string) (bool, error)
 	SetCheckpoint(ctx context.Context, id, db, key, value string) error
 	Checkpoint(ctx context.Context, id, db, key string) (string, bool, error)
 	DeleteCheckpoint(ctx context.Context, id, db, key string) error
@@ -389,6 +392,45 @@ func needsRecovery(copyDone bool, o DBState) (string, bool) {
 	return "", false
 }
 
+// ErrForeignState means a server holds state (tables on the target, a slot, a
+// subscription) that this migration never created: Lockkeeper started no copy
+// of that database, so it must not call the state "ours", and a recovery plan
+// (which drops and recreates a target database) is out of the question.
+var ErrForeignState = errors.New("the servers hold state this migration did not create")
+
+// judge reads the recorded copy status and the real servers for one database
+// and refuses state that was not created by a copy this migration started.
+func (d *Driver) judge(ctx context.Context, id string, db int, name string, attempt int) (bool, DBState, error) {
+	cd, err := d.copyDone(ctx, id, name, attempt)
+	if err != nil {
+		return false, DBState{}, err
+	}
+	o, err := d.world.Observe(ctx, db, attempt)
+	if err != nil {
+		return false, o, fmt.Errorf("observe %s: %w", name, err)
+	}
+	if !cd && (o.SlotExists || o.SubExists || o.TargetHasTables) {
+		started, err := d.store.StepStarted(ctx, id, name, "copy")
+		if err != nil {
+			return false, o, err
+		}
+		if !started {
+			var what []string
+			if o.TargetHasTables {
+				what = append(what, "the target database already has tables")
+			}
+			if o.SlotExists {
+				what = append(what, "a replication slot with this migration's name exists on the source")
+			}
+			if o.SubExists {
+				what = append(what, "a subscription with this migration's name exists on the target")
+			}
+			return false, o, fmt.Errorf("%w: database %s: %s, but no copy of it was ever started by this migration. The target is not empty: refusing to plan a DROP DATABASE. Empty the target database (or remove the stray objects) yourself, then resume", ErrForeignState, name, strings.Join(what, " and "))
+		}
+	}
+	return cd, o, nil
+}
+
 // reconcileAll observes every database first and refuses to start anything if
 // one needs recovery, then advances each database: copy, subscription, enable.
 func (d *Driver) reconcileAll(ctx context.Context, rec Record) error {
@@ -400,13 +442,9 @@ func (d *Driver) reconcileAll(ctx context.Context, rec Record) error {
 		if err != nil {
 			return err
 		}
-		cd, err := d.copyDone(ctx, rec.ID, name, attempt)
+		cd, o, err := d.judge(ctx, rec.ID, db, name, attempt)
 		if err != nil {
 			return err
-		}
-		o, err := d.world.Observe(ctx, db, attempt)
-		if err != nil {
-			return fmt.Errorf("observe %s: %w", name, err)
 		}
 		if why, bad := needsRecovery(cd, o); bad {
 			need.Reasons[db] = why
@@ -428,13 +466,9 @@ func (d *Driver) advance(ctx context.Context, id string, db int, name string) er
 	if err != nil {
 		return err
 	}
-	cd, err := d.copyDone(ctx, id, name, attempt)
+	cd, o, err := d.judge(ctx, id, db, name, attempt)
 	if err != nil {
 		return err
-	}
-	o, err := d.world.Observe(ctx, db, attempt)
-	if err != nil {
-		return fmt.Errorf("observe %s: %w", name, err)
 	}
 	if why, bad := needsRecovery(cd, o); bad {
 		return &RecoveryRequiredError{Reasons: map[int]string{db: why}}

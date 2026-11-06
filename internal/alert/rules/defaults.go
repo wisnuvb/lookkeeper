@@ -29,9 +29,19 @@ func lv(sev model.Severity, thr float64, f time.Duration) Level {
 	return Level{Severity: sev, Threshold: thr, For: f}
 }
 
-// Defaults returns the built-in rules (SPEC section 10.1). Thresholds are
-// conservative starting points and can be overridden in configuration.
+// Defaults returns all built-in rules: PostgreSQL (SPEC 10.1), MySQL (10.2) and RDS
+// infrastructure rules. Each family lives in its own file so they can evolve
+// independently. Thresholds are conservative starting points and can be overridden
+// in configuration.
 func Defaults() []Rule {
+	out := PostgresDefaults()
+	out = append(out, MySQLDefaults()...)
+	out = append(out, RDSDefaults()...)
+	return out
+}
+
+// PostgresDefaults returns the built-in PostgreSQL rules.
+func PostgresDefaults() []Rule {
 	w, c := model.SeverityWarning, model.SeverityCritical
 	const m = time.Minute
 	return []Rule{

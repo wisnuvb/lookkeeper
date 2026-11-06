@@ -60,6 +60,11 @@ func OSEnv() Env {
 	}
 }
 
+// commandFactories lets a feature register its commands from its own file
+// (in an init function) instead of editing newRoot, which keeps parallel work
+// from colliding.
+var commandFactories []func(*app) *cobra.Command
+
 type app struct {
 	env        Env
 	configPath string
@@ -106,6 +111,9 @@ It is read-only by default: no command here changes a monitored database.`,
 	root.PersistentFlags().StringVar(&a.logLevel, "log-level", "info", "log level: debug, info, warn or error")
 
 	root.AddCommand(a.versionCmd(), a.initCmd(), a.configCmd(), a.checkCmd(), a.monitorCmd(), a.alertsCmd(), a.slotsCmd())
+	for _, f := range commandFactories {
+		root.AddCommand(f(a))
+	}
 	return root
 }
 

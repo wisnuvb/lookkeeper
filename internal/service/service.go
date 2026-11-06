@@ -147,11 +147,16 @@ func (s *Service) openFunc(name string) pg.OpenFunc {
 	}
 }
 
+// newCollector builds the collector for a target: the engine collector plus any
+// extra collectors (for example cloud metrics), merged into one.
 func (s *Service) newCollector(target string) collector.Collector {
 	if s.deps.NewCollector != nil {
 		return s.deps.NewCollector(target)
 	}
-	return pg.New(target, s.openFunc(target), pg.Options{QueryTimeout: s.cfg.Monitor.QueryTimeout.D(), Now: s.deps.Now})
+	db := s.cfg.Databases[target]
+	members := []collector.Collector{s.newEngineCollector(target, db)}
+	members = append(members, s.extraCollectors(target, db)...)
+	return collector.NewGroup(target, members...)
 }
 
 // redactErr scrubs secrets from an error before it is logged or shown.

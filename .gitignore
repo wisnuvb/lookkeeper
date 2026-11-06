@@ -1,0 +1,25 @@
+# Binaries and build output
+/lockkeeper
+/dist/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Local config, secrets and state (never commit)
+/lockkeeper.yaml
+/*.local.yaml
+*.db
+*.db-wal
+*.db-shm
+*.key
+*.pem
+.env
+.env.*
+master.key
+secrets/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store

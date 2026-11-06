@@ -27,6 +27,9 @@ type Options struct {
 	QueryTimeout time.Duration
 	// Now is injectable for tests. Default time.Now.
 	Now func() time.Time
+	// LargeTableBytes is the size from which a table counts as large for the
+	// autovacuum age metric. Default 1 GiB; lowered only by tests.
+	LargeTableBytes int64
 }
 
 // Collector implements collector.Collector for PostgreSQL.
@@ -37,6 +40,7 @@ type Collector struct {
 
 	conn      *pgx.Conn
 	prevCache map[string]cacheCounters
+	extra     extraState // state of the extra metrics (extras.go)
 }
 
 // New returns a Collector for the named target.
@@ -105,6 +109,13 @@ func (c *Collector) Collect(ctx context.Context) ([]model.Sample, bool, error) {
 		{"replication", c.replication},
 		{"xid age", c.xidAge},
 		{"cache", c.cache},
+		// Extra metrics (extras.go). The expensive catalog groups are rate-limited.
+		{"dead tuples", c.slow("dead tuples", c.deadTuples)},
+		{"autovacuum", c.slow("autovacuum", c.autovacuumAge)},
+		{"checkpoints", c.checkpoints},
+		{"temp files", c.tempBytes},
+		{"database size", c.slow("database size", c.dbSize)},
+		{"statements", c.statements},
 	}
 	for _, g := range groups {
 		gctx, cancel := context.WithTimeout(ctx, c.opts.QueryTimeout)

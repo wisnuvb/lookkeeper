@@ -23,6 +23,39 @@ const (
 	MetricPGCacheHitRatio     = "pg.cache.hit_ratio"
 	gib                       = float64(1 << 30)
 	mib                       = float64(1 << 20)
+	day                       = float64(24 * 3600)
+)
+
+// Metric names of the extra PostgreSQL metrics (collector file extras.go).
+//
+// Informational metrics have no default rule: MetricPGTempBytesRate,
+// MetricPGDBSize, MetricPGAutovacuumNeverVacuumed and the MetricPGStatements*
+// family. They are stored and exported (Prometheus) but never alert unless an
+// operator adds a rule for them.
+const (
+	// MetricPGTableDeadRatio is n_dead_tup / (n_live_tup + n_dead_tup) of a table
+	// with at least 100000 dead tuples (top 20), labels database/schema/table.
+	MetricPGTableDeadRatio = "pg.table.dead_tuple_ratio"
+	// MetricPGAutovacuumAge is the seconds since the last (auto)vacuum of a large
+	// table (at least 1 GiB, top 20). Never-vacuumed tables are not reported here.
+	MetricPGAutovacuumAge = "pg.autovacuum.last_age_s"
+	// MetricPGAutovacuumNeverVacuumed is 1 for a large table with no recorded
+	// vacuum. Informational: statistics are lost on a crash or pg_upgrade, so it
+	// is not proof that autovacuum is failing.
+	MetricPGAutovacuumNeverVacuumed = "pg.autovacuum.never_vacuumed"
+	// MetricPGCheckpointReqRatio is the share of requested (WAL-triggered)
+	// checkpoints among the most recent checkpoints.
+	MetricPGCheckpointReqRatio = "pg.checkpoint.req_ratio"
+	// MetricPGTempBytesRate is the bytes per second spilled to temporary files,
+	// per database. Informational.
+	MetricPGTempBytesRate = "pg.temp.bytes_rate"
+	// MetricPGDBSize is the size of each database in bytes. Informational.
+	MetricPGDBSize = "pg.db.size_bytes"
+	// pg_stat_statements (optional extension), top 10 by total execution time.
+	// Labels are database and queryid, never query text. Informational.
+	MetricPGStatementsTime  = "pg.statements.total_exec_time_s"
+	MetricPGStatementsCalls = "pg.statements.calls"
+	MetricPGStatementsRows  = "pg.statements.rows"
 )
 
 func lv(sev model.Severity, thr float64, f time.Duration) Level {
@@ -96,6 +129,22 @@ func PostgresDefaults() []Rule {
 		{
 			Metric: MetricPGCacheHitRatio, Description: "buffer cache hit ratio", Op: Below, Unit: UnitRatio, Hysteresis: 0.01,
 			Levels: []Level{lv(w, 0.95, 15*m), lv(c, 0.90, 15*m)},
+		},
+		// SPEC 10.1 expresses this as "ratio > 20% and > 100k rows" (critical: 40%
+		// and > 1M rows). The absolute part is a collector filter, not a rule
+		// condition: only tables with at least 100000 dead tuples are reported at
+		// all. The 1M-row condition for critical is NOT applied separately.
+		{
+			Metric: MetricPGTableDeadRatio, Description: "table dead tuple ratio", Op: Above, Unit: UnitRatio, Hysteresis: 0.05,
+			Levels: []Level{lv(w, 0.20, 0), lv(c, 0.40, 0)},
+		},
+		{
+			Metric: MetricPGAutovacuumAge, Description: "time since last vacuum of a large table", Op: Above, Unit: UnitSeconds, Hysteresis: 0.02,
+			Levels: []Level{lv(w, 3*day, 0), lv(c, 14*day, 0)},
+		},
+		{
+			Metric: MetricPGCheckpointReqRatio, Description: "requested (WAL-triggered) checkpoint ratio", Op: Above, Unit: UnitRatio, Hysteresis: 0.05,
+			Levels: []Level{lv(w, 0.30, 0), lv(c, 0.60, 0)},
 		},
 	}
 }

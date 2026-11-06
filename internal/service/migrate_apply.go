@@ -43,6 +43,10 @@ func (s *Service) verifyReady(ctx context.Context, l *loaded, preApply bool) err
 	if err != nil {
 		return s.redactErr(err)
 	}
+	// The server behind the configured address must still be the one that was planned.
+	if sf.Version != l.in.Source.Version || tf.Version != l.in.Target.Version {
+		return fmt.Errorf("the servers are not the ones this migration was planned against: source was PostgreSQL %s and is %s, target was %s and is %s. The configuration may point at a different server, or a server was upgraded; nothing was changed. Abort and plan again", l.in.Source.Version, sf.Version, l.in.Target.Version, tf.Version)
+	}
 	var problems []string
 	if preApply {
 		// Before the source was changed the slot and sender budget is checked as

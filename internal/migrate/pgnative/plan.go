@@ -28,6 +28,9 @@ type Side struct {
 	Database string
 	// TLSMode is the configured sslmode (shown in the copy command line).
 	TLSMode string
+	// CAFile is the CA bundle the tools use to verify this server (shown in the
+	// copy command line, so it is part of the plan hash).
+	CAFile  string
 	Version string
 	Major   int
 }
@@ -365,8 +368,8 @@ func startActions(in PlanInput, names migrate.Names, db int, dbName string, atte
 		sessions = []action.Template{"SET log_statement = 'none'", "SET log_min_duration_statement = -1", "SET log_min_error_statement = 'panic'"}
 	}
 	src := migrate.CopyInput{
-		Source:     migrate.Endpoint{Host: in.Source.Host, Port: in.Source.Port, Database: dbName, User: in.Source.User, TLSMode: in.Source.TLSMode},
-		Target:     migrate.Endpoint{Host: in.Target.Host, Port: in.Target.Port, Database: dbName, User: in.Target.User, TLSMode: in.Target.TLSMode},
+		Source:     migrate.Endpoint{Host: in.Source.Host, Port: in.Source.Port, Database: dbName, User: in.Source.User, TLSMode: in.Source.TLSMode, CAFile: in.Source.CAFile},
+		Target:     migrate.Endpoint{Host: in.Target.Host, Port: in.Target.Port, Database: dbName, User: in.Target.User, TLSMode: in.Target.TLSMode, CAFile: in.Target.CAFile},
 		SnapshotID: "<snapshot id from the slot>", WorkDir: "<private work directory>", TableJobs: in.TableJobs, IndexJobs: in.IndexJobs, NoOwner: in.NoOwner,
 	}
 	return []action.Action{

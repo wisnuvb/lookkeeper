@@ -206,12 +206,20 @@ func TestPolitelyExitingToolIsNotKilled(t *testing.T) {
 	run, _ := r.Begin("polite", endpoints())
 	defer run.Close()
 	marker := filepath.Join(t.TempDir(), "term-seen")
+	ready := filepath.Join(t.TempDir(), "ready")
 	tool := script(t, `trap 'echo seen > `+marker+`; exit 0' TERM
+touch `+ready+`
 while :; do sleep 0.1; done`)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { _, err := run.Exec(ctx, tool, nil, nil); done <- err }()
-	time.Sleep(500 * time.Millisecond)
+	for i := 0; i < 200; i++ { // the trap is installed once the tool says it is ready
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond)
 	cancel()
 	<-done
 	if _, err := os.Stat(marker); err != nil {

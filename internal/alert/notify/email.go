@@ -16,6 +16,7 @@ import (
 	"net/mail"
 	"net/smtp"
 	"net/textproto"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -420,6 +421,12 @@ func isPlainDomain(d string) bool {
 func (e *Email) smtpError(ctx context.Context, step string, err error) error {
 	if cerr := ctx.Err(); cerr != nil {
 		return fmt.Errorf("email: %s: %w", step, cerr)
+	}
+	// The socket deadline equals the context deadline, so a read can fail with
+	// an i/o timeout a moment before ctx.Err() is set. The only deadline on the
+	// socket is our own timeout, so report it as such.
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return fmt.Errorf("email: %s: %w", step, context.DeadlineExceeded)
 	}
 	var ne *net.OpError
 	if errors.As(err, &ne) && ne.Err != nil {

@@ -1,25 +1,40 @@
 package auth
 
 import (
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/text/unicode/norm"
 )
 
-// Limiter slows down password guessing with exponential backoff. It tracks failures per key; after
-// Threshold consecutive failures the key is locked for BaseLock, doubling with each further failure up
-// to MaxLock. A success clears the key. The map is bounded so an attacker cannot exhaust memory by
-// inventing keys.
+// Limiter slows down password guessing with exponential backoff.
+//
+// The model is RESERVE BEFORE VERIFY. Acquire checks the lock and, in the same critical section, counts
+// the attempt as a failure in advance. Only a success (Reset) or a non-credential error (Release) takes
+// it back. A separate "check, verify, then record" sequence would let any number of concurrent requests
+// pass the check before the first failure is recorded (the independent review proved 200 of 200 passing
+// a threshold of 5).
+//
+// After Threshold counted attempts the key is locked for BaseLock, doubling with each further counted
+// attempt up to MaxLock. Counters decay: a key that has been quiet for DecayAfter starts from zero, so
+// typos spread over months never add up to a lock.
+//
+// The table is bounded and fails SAFE. When it is full the oldest key that is NOT locked is evicted; a
+// currently locked key is never evicted (otherwise flooding the table with junk keys would erase a lock),
+// and if every key is locked a new key is refused until one expires.
 //
 // Trade-off, stated plainly: a per-username lock lets an attacker who knows a username keep that
-// account locked (a lockout attack). The lock is capped at MaxLock and a per-IP limiter with a higher
-// threshold runs beside it; the admin can always reach the server console to reset a password.
+// account locked. The lock is capped at MaxLock, the address limiter runs beside it, and Reset (wired to
+// an administrator console command) clears it.
 type Limiter struct {
-	Threshold int
-	BaseLock  time.Duration
-	MaxLock   time.Duration
-	MaxKeys   int
-	Now       func() time.Time
+	Threshold  int
+	BaseLock   time.Duration
+	MaxLock    time.Duration
+	MaxKeys    int
+	DecayAfter time.Duration
+	Now        func() time.Time
 
 	mu      sync.Mutex
 	entries map[string]*entry
@@ -54,32 +69,31 @@ func (l *Limiter) init() {
 	if l.MaxKeys <= 0 {
 		l.MaxKeys = 10_000
 	}
+	if l.DecayAfter <= 0 {
+		l.DecayAfter = time.Hour
+	}
 }
 
-// Allow reports whether the key may try now, and if not, how long to wait.
-func (l *Limiter) Allow(key string) (ok bool, retryAfter time.Duration) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.init()
-	e := l.entries[key]
-	if e == nil {
-		return true, 0
-	}
-	if now := l.now(); now.Before(e.lockedUntil) {
-		return false, e.lockedUntil.Sub(now)
-	}
-	return true, 0
-}
-
-// Fail records a failed attempt.
-func (l *Limiter) Fail(key string) {
+// Acquire is called BEFORE the password is verified. It returns ok=false (and how long to wait) if the
+// key is locked or the table is saturated with locks; otherwise it counts this attempt and returns
+// ok=true. The attempt that reaches the threshold is still allowed to run; the next one is not.
+func (l *Limiter) Acquire(key string) (ok bool, retryAfter time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.init()
 	now := l.now()
 	e := l.entries[key]
-	if e == nil {
-		l.evict(now)
+	if e != nil {
+		if now.Before(e.lockedUntil) {
+			return false, e.lockedUntil.Sub(now)
+		}
+		if now.Sub(e.lastSeen) > l.DecayAfter {
+			e.failures = 0 // quiet for a long time: start again
+		}
+	} else {
+		if wait, full := l.makeRoom(now); full {
+			return false, wait
+		}
 		e = &entry{}
 		l.entries[key] = e
 	}
@@ -95,24 +109,59 @@ func (l *Limiter) Fail(key string) {
 		}
 		e.lockedUntil = now.Add(lock)
 	}
+	return true, 0
 }
 
-// Succeed clears the key after a successful login.
-func (l *Limiter) Succeed(key string) {
+// Release takes back one counted attempt: used when an attempt turned out not to be a credential
+// failure (a database error, a cancelled request) and for the address counter after a success. It never
+// clears a lock that is currently active.
+func (l *Limiter) Release(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if e := l.entries[key]; e != nil && e.failures > 0 {
+		e.failures--
+		if e.failures == 0 && !l.now().Before(e.lockedUntil) {
+			delete(l.entries, key)
+		}
+	}
+}
+
+// Reset clears a key completely: after a successful login, and for an administrator's unlock.
+func (l *Limiter) Reset(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	delete(l.entries, key)
 }
 
-// evict makes room: first drop entries that are no longer locked and are stale, then the oldest.
-func (l *Limiter) evict(now time.Time) {
+// Locked reports whether the key is locked now, without counting an attempt.
+func (l *Limiter) Locked(key string) (bool, time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if e := l.entries[key]; e != nil {
+		if now := l.now(); now.Before(e.lockedUntil) {
+			return true, e.lockedUntil.Sub(now)
+		}
+	}
+	return false, 0
+}
+
+// makeRoom frees space for one new key. It never evicts a locked key. If every entry is locked it
+// reports full=true with the shortest remaining lock, and the caller refuses the new key.
+func (l *Limiter) makeRoom(now time.Time) (wait time.Duration, full bool) {
 	if len(l.entries) < l.MaxKeys {
-		return
+		return 0, false
 	}
 	var oldestKey string
 	var oldest time.Time
+	shortest := time.Duration(-1)
 	for k, e := range l.entries {
-		if now.After(e.lockedUntil) && now.Sub(e.lastSeen) > l.MaxLock {
+		if now.Before(e.lockedUntil) {
+			if r := e.lockedUntil.Sub(now); shortest < 0 || r < shortest {
+				shortest = r
+			}
+			continue
+		}
+		if now.Sub(e.lastSeen) > l.DecayAfter { // decayed: it would start from zero anyway
 			delete(l.entries, k)
 			continue
 		}
@@ -120,9 +169,44 @@ func (l *Limiter) evict(now time.Time) {
 			oldestKey, oldest = k, e.lastSeen
 		}
 	}
-	if len(l.entries) >= l.MaxKeys && oldestKey != "" {
-		delete(l.entries, oldestKey)
+	if len(l.entries) < l.MaxKeys {
+		return 0, false
 	}
+	if oldestKey != "" {
+		delete(l.entries, oldestKey)
+		return 0, false
+	}
+	if shortest < 0 {
+		shortest = l.BaseLock
+	}
+	return shortest, true
+}
+
+// CanonicalUsername is the ONE normal form of a username, used by the limiter and (when it exists) by
+// the user store, so that an attacker cannot spread guesses over spellings of one account (fullwidth
+// letters, the Kelvin sign, trailing spaces...). NFKC, lower case, trimmed.
+func CanonicalUsername(s string) string {
+	return strings.ToLower(norm.NFKC.String(strings.TrimSpace(s)))
+}
+
+// AddrKey is the limiter key for a client address. IPv6 clients are grouped by /64, because one
+// subscriber normally controls a whole /64 and would otherwise have 2^64 distinct keys. IPv4-mapped
+// IPv6 is treated as IPv4. Anything unparseable shares one bucket instead of creating unbounded keys.
+func AddrKey(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if ap, err := netip.ParseAddrPort(addr); err == nil {
+		addr = ap.Addr().String()
+	}
+	ip, err := netip.ParseAddr(strings.Trim(addr, "[]"))
+	if err != nil {
+		return "a:unparsed"
+	}
+	ip = ip.WithZone("").Unmap()
+	if ip.Is6() {
+		p, _ := ip.Prefix(64)
+		return "a:" + p.String()
+	}
+	return "a:" + ip.String()
 }
 
 // LoginGuard combines a per-username and a per-client-address limiter.
@@ -131,7 +215,7 @@ type LoginGuard struct {
 	byAddr *Limiter
 }
 
-// NewLoginGuard builds a guard with sensible defaults: 5 failures lock a username, 20 lock an address.
+// NewLoginGuard builds a guard with sensible defaults: 5 attempts lock a username, 20 lock an address.
 func NewLoginGuard(now func() time.Time) *LoginGuard {
 	return &LoginGuard{
 		byUser: &Limiter{Threshold: 5, BaseLock: 30 * time.Second, MaxLock: 15 * time.Minute, Now: now},
@@ -139,29 +223,50 @@ func NewLoginGuard(now func() time.Time) *LoginGuard {
 	}
 }
 
-func userKey(username string) string { return "u:" + strings.ToLower(strings.TrimSpace(username)) }
-func addrKey(addr string) string     { return "a:" + addr }
+func userKey(username string) string { return "u:" + CanonicalUsername(username) }
 
-// Check returns ok=false and the wait time if either the username or the address is locked.
-func (g *LoginGuard) Check(username, addr string) (bool, time.Duration) {
-	okU, wU := g.byUser.Allow(userKey(username))
-	okA, wA := g.byAddr.Allow(addrKey(addr))
-	if okU && okA {
-		return true, 0
-	}
-	if wA > wU {
-		return false, wA
-	}
-	return false, wU
+// Attempt is one reserved login attempt. Unless Succeeded or Cancel is called, it counts as a failure.
+type Attempt struct {
+	g          *LoginGuard
+	uKey, aKey string
+	once       sync.Once
 }
 
-// Failure records a failed login for both keys. An unknown username is recorded too, so the throttle
-// behaves identically whether or not the account exists.
-func (g *LoginGuard) Failure(username, addr string) {
-	g.byUser.Fail(userKey(username))
-	g.byAddr.Fail(addrKey(addr))
+// Begin reserves an attempt BEFORE the password is checked. ok=false means the username or the address
+// is locked (or the table is saturated): answer 429 with wait as Retry-After and do not verify. Unknown
+// usernames are reserved exactly like known ones, so the throttle reveals nothing about which exist.
+func (g *LoginGuard) Begin(username, addr string) (a *Attempt, wait time.Duration, ok bool) {
+	aKey, uKey := AddrKey(addr), userKey(username)
+	okA, wA := g.byAddr.Acquire(aKey)
+	if !okA {
+		return nil, wA, false
+	}
+	okU, wU := g.byUser.Acquire(uKey)
+	if !okU {
+		g.byAddr.Release(aKey) // blocked by the username: do not charge the address for it
+		return nil, wU, false
+	}
+	return &Attempt{g: g, uKey: uKey, aKey: aKey}, 0, true
 }
 
-// Success clears the username's counter (the address counter keeps counting: one address that
-// succeeds once should not erase evidence of guessing against other accounts).
-func (g *LoginGuard) Success(username string) { g.byUser.Succeed(userKey(username)) }
+// Succeeded records a correct password: the username's counter is cleared and the address gets its
+// attempt back (it keeps counting failures against other usernames).
+func (a *Attempt) Succeeded() {
+	a.once.Do(func() {
+		a.g.byUser.Reset(a.uKey)
+		a.g.byAddr.Release(a.aKey)
+	})
+}
+
+// Cancel gives both attempts back: the request failed for a reason that is not a wrong password (a
+// database error, a client that went away).
+func (a *Attempt) Cancel() {
+	a.once.Do(func() {
+		a.g.byUser.Release(a.uKey)
+		a.g.byAddr.Release(a.aKey)
+	})
+}
+
+// Unlock clears a username's lock. It is for the administrator console (a locked-out administrator
+// resets from the server, not from the web).
+func (g *LoginGuard) Unlock(username string) { g.byUser.Reset(userKey(username)) }

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/wisnuvb/lockkeeper/internal/webui"
@@ -28,6 +29,8 @@ type Config struct {
 	TLSCertFile, TLSKeyFile string
 	// AllowNonLoopback is the explicit opt-in to listen beyond loopback; it also needs TLS and AuthEnabled.
 	AllowNonLoopback bool
+	// Proxy declares trusted reverse proxies (client address and HTTPS detection, see ProxyPolicy).
+	Proxy ProxyPolicy
 	// AuthEnabled declares that routes are protected by authentication (checked by CheckListen).
 	AuthEnabled bool
 	// UI is the static asset tree; nil means the embedded build (webui.FS()).
@@ -89,12 +92,22 @@ func New(cfg Config) (*Server, error) {
 // static fallback can never shadow it.
 func (s *Server) Handle(pattern string, h http.Handler) { s.mux.Handle(pattern, h) }
 
+// Proxy returns the trusted-proxy policy for handlers that need the client address or the HTTPS flag.
+func (s *Server) Proxy() ProxyPolicy { return s.cfg.Proxy }
+
 // Handler returns the full handler chain (for tests and for embedding in another server).
 func (s *Server) Handler() http.Handler { return s.root }
 
 // Serve serves on ln until ctx is cancelled, then shuts down gracefully (in-flight requests get up to
 // ten seconds). The caller opens the listener so that tests can use port 0.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	// CheckListen judged the configured STRING. A name such as "localhost" is resolved only now, by the
+	// operating system, and a hosts-file entry could make it a public address (independent review,
+	// finding 11). Judge the address that was really bound.
+	if err := checkBound(ln.Addr(), s.cfg.AllowNonLoopback); err != nil {
+		_ = ln.Close()
+		return err
+	}
 	srv := &http.Server{
 		Handler:           s.root,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -130,6 +143,26 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		return nil
 	}
 }
+
+// checkBound refuses a listener that is not loopback unless the operator opted in. (CheckListen already
+// required TLS and authentication for that opt-in.)
+func checkBound(a net.Addr, allowNonLoopback bool) error {
+	if allowNonLoopback {
+		return nil
+	}
+	tcp, ok := a.(*net.TCPAddr)
+	if !ok {
+		return fmt.Errorf("web: unexpected listener address type %T", a)
+	}
+	ip, ok := netip.AddrFromSlice(tcp.IP)
+	if !ok || !ip.Unmap().IsLoopback() {
+		return fmt.Errorf("web: the listener is bound to %s, which is not loopback; refusing to serve (name resolution gave a non-loopback address)", tcp.IP)
+	}
+	return nil
+}
+
+// WriteTimeout note: Serve sets a 60 s write timeout, which would cut a long-lived stream. A streaming
+// handler (progress events) must extend its own deadline with http.NewResponseController(w).SetWriteDeadline.
 
 // ListenAndServe binds the configured address and serves until ctx is cancelled.
 func (s *Server) ListenAndServe(ctx context.Context) error {

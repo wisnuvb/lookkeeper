@@ -275,3 +275,43 @@ func TestOpenSecretRedactsItself(t *testing.T) {
 		t.Fatal("secret.Value must redact")
 	}
 }
+
+// Review finding 6: a rotation must not report success for a row that is already unrecoverable.
+func TestRewrapRefusesADamagedPayload(t *testing.T) {
+	old, next := newVault(t), newVault(t)
+	blob, _ := old.Seal([]byte("rotate me"), ctxA)
+	for _, i := range []int{offDataN, offDataN + nonceLen, len(blob) / 2, len(blob) - 1} {
+		damaged := bytes.Clone(blob)
+		damaged[i] ^= 0x01
+		if _, err := old.Rewrap(damaged, ctxA, next); !errors.Is(err, ErrCorrupt) {
+			t.Errorf("flipping byte %d: Rewrap must report ErrCorrupt, got %v", i, err)
+		}
+	}
+	// And the good blob still rotates.
+	if _, err := old.Rewrap(blob, ctxA, next); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRewrapToNilVaultIsAnErrorNotAPanic(t *testing.T) {
+	v := newVault(t)
+	blob, _ := v.Seal([]byte("x"), ctxA)
+	if _, err := v.Rewrap(blob, ctxA, nil); !errors.Is(err, ErrInvalidKey) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// Review finding 7, documented and pinned: binding stops cross-field swaps but not rollback within the
+// same context. Callers that need rollback resistance put a revision in the context.
+func TestRollbackWithinTheSameContextIsPossibleUnlessTheContextCarriesARevision(t *testing.T) {
+	v := newVault(t)
+	oldBlob, _ := v.Seal([]byte("old password"), "connection:c1:password")
+	if got, err := v.Open(oldBlob, "connection:c1:password"); err != nil || string(got) != "old password" {
+		t.Fatal("known limit: an older blob in the same context still opens")
+	}
+	// With a revision in the context, the stale blob no longer opens once the revision moved on.
+	rev1, _ := v.Seal([]byte("old password"), "connection:c1:password:v1")
+	if _, err := v.Open(rev1, "connection:c1:password:v2"); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("a blob sealed for revision 1 must not open as revision 2: %v", err)
+	}
+}

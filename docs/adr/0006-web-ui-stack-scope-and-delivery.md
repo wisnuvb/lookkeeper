@@ -112,7 +112,7 @@ Decisions taken while building, each verified in a real browser against the real
   1 = version). The Phase 3 branch appends version 2; U1 tables (users, sessions, audit of web actions,
   connection registry, vault records) must therefore be built on top of it, as version 3. **Phase 3 is
   merged before the store-backed part of U1.** Slice U1-A touches no schema.
-- **Slice U1-A (done, uncommitted):** `internal/netguard` (T21), `internal/vault`, `internal/auth`
+- **Slice U1-A (done):** `internal/netguard` (T21), `internal/vault`, `internal/auth`
   (password hashing, tokens, roles, login throttling, CSRF, sessions behind an interface, first-run
   token), `internal/web` and `internal/webui` (hardened server, embedded UI), and a preview command
   `lockkeeper serve` (demo data, loopback only, no login). The UI is embedded with `make build-ui`.
@@ -123,3 +123,38 @@ Decisions taken while building, each verified in a real browser against the real
 - **Toolchain.** `go.mod` now pins `toolchain go1.27.4`: GO-2026-6859 (HTTP/1 server crash through a
   `MaxBytesReader` header race in `net/http`, fixed in 1.27.4) is reachable from the new server, which
   uses both.
+
+### Independent security review of slice U1-A (2026-11-15) and what was done about it
+
+A reviewer with no access to the author's reasoning read the new packages and proved issues with tests.
+No critical or high issue; the bind policy, Host guard, CSP nonce, static-file rules, argon2id handling,
+token storage and vault AEAD were found sound. Everything it proved or plausibly argued was fixed in the
+same slice, each with a regression test that was shown to fail when the fix is removed:
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Login throttle bypassed by parallel requests (200 of 200 passed a threshold of 5) | Reserve before verify: `Limiter.Acquire` counts the attempt atomically; success or a non-credential error gives it back (`LoginGuard.Begin` returns an `Attempt`) |
+| 2 | Flooding the key table evicted an active lock | A locked key is never evicted; a table full of locks refuses new keys (fail closed) |
+| 3 | Counters never decayed; a lockout could be held forever | Counters decay after `DecayAfter` (1 h quiet); `LoginGuard.Unlock` for the administrator console |
+| 4 | `CheckOrigin` ignored the scheme | Origin must match scheme and host; `https` is passed in explicitly |
+| 5 | netguard allowed some metadata and IPv6 transition ranges (Azure, Alibaba, Oracle, `::/96`, SIIT, Teredo, local NAT64, site-local, documentation, benchmarking) | Added to the never-allowed list |
+| 6 | `Rewrap` did not verify the payload; `nil` next panicked | Payload tag is verified before success; `nil` is an error |
+| 7 | Rollback to an older blob within one context | Documented; callers put a revision in the context (`connection:<id>:password:v<rev>`) |
+| 8 | No safe client-IP / HTTPS detection behind a reverse proxy | `web.ProxyPolicy` (trusted proxies, rightmost-untrusted `X-Forwarded-For`, `X-Forwarded-Proto` only from a trusted peer) |
+| 9 | Unbounded concurrent argon2 runs (64 MiB each) | At most min(4, CPUs) at once; a saturated server answers `ErrBusy` (503) |
+| 10 | Plain-HTTP loopback cookie is shared across ports | Documented in code; serving over TLS under its own host name removes it |
+| 11 | `net.Listen("localhost")` resolved after the policy approved the string | `Serve` checks the address actually bound |
+| 12 | Limiter and user store could normalise usernames differently | One `auth.CanonicalUsername` (NFKC, lower case, trimmed) |
+| 13 | netguard errors named resolved internal IPs | Generic `Error()`; detail only through `errors.As(*RefusedError)` for the log |
+
+**Wiring requirements for U1-B** (from the review; not code yet):
+- Create the connection from structured fields only, never a raw DSN (pgx options such as `sslkey`,
+  `sslrootcert`, `passfile`, `service` and multi-host lists would become local-file reads and dial
+  targets), and always pass `netguard.Policy.Dialer`. Map `ErrRefused` to one generic API error.
+- Streaming endpoints (SSE, WebSocket) are GET requests: apply `auth.CheckSameOrigin`, and extend the
+  write deadline with `http.NewResponseController` (the server's 60 s write timeout would cut the stream).
+- Create the administrator and consume the bootstrap token in one transaction: validate with
+  `Bootstrap.Valid`, create the account, then `Consume`.
+- Run `Manager.RunJanitor` in the server so sessions that are never presented again are removed.
+- Never put a token in a URL path (the access log records paths, never query strings).
+- Use a revision in every vault context that can be replaced in place.

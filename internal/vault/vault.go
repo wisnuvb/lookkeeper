@@ -14,8 +14,11 @@
 // secret payload and never needs the plaintext to leave this package.
 //
 // What this does NOT protect against: an attacker who has both the database file and the master key
-// recovers everything (the knowingly relaxed letter of security principle 3, ADR 0005), and an
-// attacker who can run code inside the Lockkeeper process while secrets are in memory.
+// recovers everything (the knowingly relaxed letter of security principle 3, ADR 0005); an attacker who
+// can run code inside the Lockkeeper process while secrets are in memory; and ROLLBACK. Context binding
+// stops a blob being moved to another field, but a database writer can still put an OLDER blob back in
+// the same field and the old secret opens cleanly. Callers that must resist this include a revision in
+// the context, for example "connection:<id>:password:v<revision>", and bump it on every change.
 package vault
 
 import (
@@ -253,10 +256,16 @@ func KeyIDOf(blob []byte) (string, error) {
 	return hex.EncodeToString(blob[1:headerLen]), nil
 }
 
-// Rewrap re-seals the data key under next's master key. The encrypted payload is not touched and the
-// plaintext is never produced. Use it to rotate the master key: for every stored blob, call Rewrap
-// with the old vault as the receiver and the new vault as next, then store the result.
+// Rewrap re-seals the data key under next's master key. The encrypted payload is not re-encrypted and
+// the plaintext is never returned, but the payload IS verified (its authentication tag is checked)
+// before success is reported: a rotation that "succeeded" on an already-damaged row would otherwise
+// let the old key be retired while the secret is already unrecoverable. Use it to rotate the master
+// key: for every stored blob, call Rewrap with the old vault as the receiver and the new vault as
+// next, store the result, and only then retire the old key.
 func (v *Vault) Rewrap(blob []byte, context string, next *Vault) ([]byte, error) {
+	if next == nil {
+		return nil, ErrInvalidKey
+	}
 	if context == "" {
 		return nil, ErrEmptyContext
 	}
@@ -268,6 +277,21 @@ func (v *Vault) Rewrap(blob []byte, context string, next *Vault) ([]byte, error)
 		return nil, err
 	}
 	defer clear(dek)
+
+	// Verify the payload with the data key; discard the plaintext immediately.
+	block, err := aes.NewCipher(dek)
+	if err != nil {
+		return nil, ErrCorrupt
+	}
+	data, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, ErrCorrupt
+	}
+	pt, err := data.Open(nil, blob[offDataN:offData], blob[offData:], aadData(context))
+	if err != nil {
+		return nil, ErrCorrupt
+	}
+	clear(pt)
 
 	out := make([]byte, 0, len(blob))
 	out = append(out, formatV1)

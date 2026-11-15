@@ -12,8 +12,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
@@ -51,11 +54,52 @@ const (
 )
 
 var (
+	// ErrBusy means too many password checks are already running. The caller answers 503 with a short
+	// Retry-After. Each argon2 run needs 64 MiB, so unlimited parallel logins (including guesses at
+	// unknown users, which still run a dummy verification) would exhaust memory before any throttle applies.
+	ErrBusy = errors.New("auth: too many password checks in progress")
 	// ErrInvalidHash means the stored hash is malformed or outside the accepted parameter bounds.
 	ErrInvalidHash = errors.New("auth: invalid password hash")
 	// ErrWeakPassword wraps the human-readable reason a password was rejected.
 	ErrWeakPassword = errors.New("auth: password rejected")
 )
+
+// hashSlots bounds concurrent argon2 runs: at most min(4, CPUs) at once, so the worst case is about
+// 256 MiB however many requests arrive. hashWait is how long a request queues for a slot before it is
+// turned away with ErrBusy. Both are variables so tests can shrink them.
+var (
+	hashSlots = make(chan struct{}, defaultHashSlots())
+	hashWait  = 2 * time.Second
+)
+
+func defaultHashSlots() int {
+	n := runtime.NumCPU()
+	if n > 4 {
+		n = 4
+	}
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+func acquireHashSlot() error {
+	select {
+	case hashSlots <- struct{}{}:
+		return nil
+	default:
+	}
+	t := time.NewTimer(hashWait)
+	defer t.Stop()
+	select {
+	case hashSlots <- struct{}{}:
+		return nil
+	case <-t.C:
+		return ErrBusy
+	}
+}
+
+func releaseHashSlot() { <-hashSlots }
 
 // normalise applies Unicode NFKC so that visually identical passwords typed on different systems
 // (composed vs decomposed accents) hash the same (NIST SP 800-63B section 5.1.1.2).
@@ -71,6 +115,10 @@ func HashPassword(password string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("auth: random source failed: %w", err)
 	}
+	if err := acquireHashSlot(); err != nil {
+		return "", err
+	}
+	defer releaseHashSlot()
 	key := argon2.IDKey(pw, salt, argonTime, argonMemoryKiB, argonThreads, argonKeyLen)
 	return encodeHash(argonMemoryKiB, argonTime, argonThreads, salt, key), nil
 }
@@ -144,6 +192,10 @@ func VerifyPassword(password, encoded string) (ok, needsRehash bool, err error) 
 		return false, false, err
 	}
 	pw := normalise(password)
+	if err := acquireHashSlot(); err != nil {
+		return false, false, err
+	}
+	defer releaseHashSlot()
 	if len(pw) > maxPasswordBytes {
 		// Still do the work, so the response time does not reveal the length rule.
 		pw = pw[:maxPasswordBytes]
@@ -157,19 +209,32 @@ func VerifyPassword(password, encoded string) (ok, needsRehash bool, err error) 
 	return ok, needsRehash, nil
 }
 
-// dummyHash is verified when the user does not exist, so "unknown user" and "wrong password" take the
-// same time and the login endpoint does not reveal which usernames exist.
-var dummyHash = func() string {
-	h, err := HashPassword("lockkeeper-dummy-password-for-timing-equalisation")
-	if err != nil {
-		panic(err)
-	}
-	return h
-}()
+// The dummy hash is verified when the user does not exist, so "unknown user" and "wrong password" take
+// the same time and the login endpoint does not reveal which usernames exist. It is created on first
+// use, not at package load: computing it costs about 100 ms and 64 MiB, which every command that merely
+// imports this package (check, inventory, config validate...) would otherwise pay on startup.
+var (
+	dummyOnce sync.Once
+	dummyVal  string
+	dummyErr  error
+)
 
-// DummyVerify burns the same CPU time as a real verification and always reports failure.
-func DummyVerify(password string) {
-	_, _, _ = VerifyPassword(password, dummyHash)
+func dummyHash() (string, error) {
+	dummyOnce.Do(func() {
+		dummyVal, dummyErr = HashPassword("lockkeeper-dummy-password-for-timing-equalisation")
+	})
+	return dummyVal, dummyErr
+}
+
+// DummyVerify burns the same CPU time as a real verification and reports failure. It returns ErrBusy
+// when the server is saturated, like VerifyPassword.
+func DummyVerify(password string) error {
+	h, err := dummyHash()
+	if err != nil {
+		return err
+	}
+	_, _, err = VerifyPassword(password, h)
+	return err
 }
 
 var commonPasswords = map[string]struct{}{

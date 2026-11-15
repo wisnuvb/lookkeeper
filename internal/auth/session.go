@@ -143,6 +143,11 @@ func SessionCookieName(secure bool) string {
 	return cookiePlain
 }
 
+// Known limit on plain-HTTP loopback: cookies are scoped by host, not by port, so another service the same
+// browser reaches on http://127.0.0.1:<other port> is sent this cookie. The Origin check stops that
+// service from WRITING through the session, but it could read the cookie. Serving the UI over TLS under
+// its own host name (which also selects the __Host- form) removes the exposure.
+//
 // NewSessionCookie builds the session cookie: HttpOnly (no script access), SameSite=Strict, Path=/,
 // Secure whenever the request arrived over TLS. A non-TLS cookie is only possible on loopback because
 // the server refuses to listen elsewhere without TLS.
@@ -217,4 +222,23 @@ func (s *MemStore) DeleteExpired(_ context.Context, now time.Time) (int, error) 
 		}
 	}
 	return n, nil
+}
+
+// RunJanitor deletes expired sessions every interval until ctx is cancelled. Without it, sessions that
+// are never presented again (a closed laptop, a lost cookie) stay in the database for good. It blocks;
+// run it in a goroutine owned by the server.
+func (m *Manager) RunJanitor(ctx context.Context, every time.Duration) {
+	if every <= 0 {
+		every = 10 * time.Minute
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			_, _ = m.Store.DeleteExpired(ctx, m.now())
+		}
+	}
 }

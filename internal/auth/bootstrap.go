@@ -47,6 +47,15 @@ func (b *Bootstrap) Consume(token string) bool {
 	return true
 }
 
+// Valid checks the token WITHOUT burning it. Use it first, validate the new administrator's password
+// and create the account, and only then call Consume: otherwise a rejected (too weak) password would
+// burn the one-time token and leave the server with no way to create its first administrator.
+func (b *Bootstrap) Valid(token string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return !b.used && b.now().Before(b.expires) && EqualDigest(HashToken(token), b.digest)
+}
+
 // Active reports whether the token can still be used.
 func (b *Bootstrap) Active() bool {
 	b.mu.Lock()

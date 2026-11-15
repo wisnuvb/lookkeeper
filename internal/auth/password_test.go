@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -112,14 +114,20 @@ func TestLongPasswords(t *testing.T) {
 
 func TestDummyVerifyUsesTheCurrentParameters(t *testing.T) {
 	// The dummy hash must cost as much as a real one, or login timing reveals which users exist.
-	h, err := parseHash(dummyHash)
+	dh, err := dummyHash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := parseHash(dh)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if h.m != argonMemoryKiB || h.t != argonTime || h.p != argonThreads || len(h.key) != argonKeyLen {
 		t.Fatalf("dummy hash parameters differ from the real ones: %+v", h)
 	}
-	DummyVerify("anything") // must not panic
+	if err := DummyVerify("anything"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestValidatePassword(t *testing.T) {
@@ -153,5 +161,93 @@ func TestValidatePassword(t *testing.T) {
 	// Spaces and punctuation are fine: no composition rules.
 	if err := ValidatePassword("correct horse battery staple!", "bob"); err != nil {
 		t.Errorf("passphrases must be accepted: %v", err)
+	}
+}
+
+// cheapHash makes a valid but fast hash (8 KiB, 1 pass) so concurrency tests do not pay for 64 MiB runs.
+func cheapHash(t *testing.T, password string) string {
+	t.Helper()
+	salt := make([]byte, 16)
+	_, _ = rand.Read(salt)
+	key := argon2.IDKey([]byte(password), salt, 1, 8*1024, 1, 32)
+	return encodeHash(8*1024, 1, 1, salt, key)
+}
+
+// Review finding 9: unlimited parallel logins (each 64 MiB) could exhaust memory before any throttle ran.
+func TestPasswordChecksAreBoundedAndShedLoad(t *testing.T) {
+	oldSlots, oldWait := hashSlots, hashWait
+	hashSlots, hashWait = make(chan struct{}, 2), 80*time.Millisecond
+	defer func() { hashSlots, hashWait = oldSlots, oldWait }()
+
+	h := cheapHash(t, "a perfectly fine password")
+	// Occupy every slot, as two long verifications would.
+	hashSlots <- struct{}{}
+	hashSlots <- struct{}{}
+
+	start := time.Now()
+	if _, _, err := VerifyPassword("a perfectly fine password", h); err != ErrBusy {
+		t.Fatalf("a saturated server must answer ErrBusy, got %v", err)
+	}
+	if time.Since(start) < 60*time.Millisecond {
+		t.Fatal("a request should queue briefly before being turned away")
+	}
+	if err := DummyVerify("x"); err != ErrBusy {
+		t.Fatalf("the dummy verification is bounded too, got %v", err)
+	}
+	if _, err := HashPassword("another fine password!"); err != ErrBusy {
+		t.Fatalf("hashing is bounded too, got %v", err)
+	}
+	// Malformed hashes are rejected before taking a slot: they cost nothing.
+	if _, _, err := VerifyPassword("x", "garbage"); err != ErrInvalidHash {
+		t.Fatalf("an invalid hash must not need a slot, got %v", err)
+	}
+	// A freed slot lets the next one through.
+	<-hashSlots
+	if ok, _, err := VerifyPassword("a perfectly fine password", h); err != nil || !ok {
+		t.Fatalf("after a slot frees up the check must run: ok=%v err=%v", ok, err)
+	}
+	<-hashSlots
+}
+
+func TestNoMoreThanTheLimitRunAtOnce(t *testing.T) {
+	oldSlots, oldWait := hashSlots, hashWait
+	hashSlots, hashWait = make(chan struct{}, 2), 5*time.Second
+	defer func() { hashSlots, hashWait = oldSlots, oldWait }()
+	h := cheapHash(t, "a perfectly fine password")
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	maxSeen := 0
+	for i := 0; i < 6; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, _ = VerifyPassword("a perfectly fine password", h)
+		}()
+	}
+	// Sample the number of occupied slots while the checks run.
+	done := make(chan struct{})
+	sampled := make(chan struct{})
+	go func() {
+		defer close(sampled)
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				mu.Lock()
+				if n := len(hashSlots); n > maxSeen {
+					maxSeen = n
+				}
+				mu.Unlock()
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}()
+	wg.Wait()
+	close(done)
+	<-sampled // the sampler must be gone before the deferred restore touches hashSlots
+	if maxSeen > 2 || maxSeen == 0 {
+		t.Fatalf("saw %d concurrent runs, want between 1 and 2", maxSeen)
 	}
 }

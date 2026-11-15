@@ -57,22 +57,37 @@ func IsUnsafeMethod(method string) bool {
 }
 
 // CheckOrigin enforces the same-origin rule for state-changing requests:
-//   - an Origin header, when present, must name the host the request was sent to ("null" never passes);
+//   - an Origin header, when present, must name the host the request was sent to AND use the scheme the
+//     deployment is served with (https is true when TLS ends here or at a proxy the operator declared;
+//     an "http://" origin must not pass on an HTTPS site, where a network attacker controls it);
+//     "null" never passes;
 //   - without Origin, Sec-Fetch-Site must be "same-origin" (or "none" for a user-typed navigation);
 //   - with neither header the request is refused. Browsers always send at least one on a cross-site
 //     write, and a non-browser client has no business using a cookie session.
 //
 // Safe methods are not checked.
-func CheckOrigin(r *http.Request) error {
+func CheckOrigin(r *http.Request, https bool) error {
 	if !IsUnsafeMethod(r.Method) {
 		return nil
 	}
+	return CheckSameOrigin(r, https)
+}
+
+// CheckSameOrigin applies the same-origin rule whatever the method. Use it for requests that change
+// nothing but still must not be driven from another site: a Server-Sent Events stream or a WebSocket
+// upgrade is a GET, so CheckOrigin would wave it through, and an attacker page could otherwise open it
+// with the victim's cookie and read the live data.
+func CheckSameOrigin(r *http.Request, https bool) error {
 	if origin := r.Header.Get("Origin"); origin != "" {
 		u, err := url.Parse(origin)
 		if err != nil || u.Host == "" || strings.EqualFold(origin, "null") {
 			return ErrCrossSite
 		}
-		if !strings.EqualFold(u.Host, r.Host) {
+		want := "http"
+		if https {
+			want = "https"
+		}
+		if !strings.EqualFold(u.Scheme, want) || !strings.EqualFold(u.Host, r.Host) {
 			return ErrCrossSite
 		}
 		return nil

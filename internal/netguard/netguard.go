@@ -35,9 +35,23 @@ import (
 	"time"
 )
 
-// ErrRefused is wrapped by every refusal so callers can map it to one API error code
+// ErrRefused matches (errors.Is) every refusal so callers can map it to one API error code
 // ("refused-address") without parsing messages.
 var ErrRefused = errors.New("address not allowed")
+
+// RefusedError is the concrete refusal. Its Error() text is deliberately generic and never contains the
+// address: an API that echoed "10.1.2.3 is a private address" would let a caller map internal DNS and
+// address space one probe at a time. The address and reason are available to the server's own log
+// through errors.As.
+type RefusedError struct {
+	Addr   netip.Addr // may be the zero Addr (bad port, empty host)
+	Reason string     // generic category, safe to show
+}
+
+func (e *RefusedError) Error() string        { return "address not allowed: " + e.Reason }
+func (e *RefusedError) Is(target error) bool { return target == ErrRefused }
+
+func refuse(ip netip.Addr, reason string) error { return &RefusedError{Addr: ip, Reason: reason} }
 
 // Policy is the operator's decision about which targets the server may connect to.
 // The zero value is the safest: public addresses only.
@@ -56,15 +70,31 @@ type Resolver interface {
 	LookupNetIP(ctx context.Context, network, host string) ([]netip.Addr, error)
 }
 
+// neverAllowed holds ranges that are refused whatever the policy says, even if an operator allowlists
+// them. Besides link-local and multicast it covers cloud metadata endpoints that live outside
+// 169.254.0.0/16, IPv6 transition ranges that can smuggle an IPv4 address past a naive check, and
+// documentation/benchmark ranges that are never a real database.
 var neverAllowed = mustPrefixes(
-	"0.0.0.0/8",      // "this network", includes 0.0.0.0
-	"169.254.0.0/16", // IPv4 link-local, includes the cloud metadata address
-	"224.0.0.0/4",    // multicast
-	"240.0.0.0/4",    // reserved, includes 255.255.255.255
-	"fe80::/10",      // IPv6 link-local
-	"fd00:ec2::/32",  // AWS IPv6 metadata range
-	"ff00::/8",       // IPv6 multicast
-	"::/128",         // unspecified
+	"0.0.0.0/8",          // "this network", includes 0.0.0.0
+	"169.254.0.0/16",     // IPv4 link-local, includes the cloud metadata address
+	"168.63.129.16/32",   // Azure WireServer / instance metadata helper (a public-looking address)
+	"100.100.100.200/32", // Alibaba Cloud metadata (inside CGNAT, which AllowPrivate would open)
+	"192.0.0.0/24",       // IETF protocol assignments; includes 192.0.0.192 (legacy Oracle metadata) and DS-Lite
+	"192.0.2.0/24",       // documentation (TEST-NET-1)
+	"198.51.100.0/24",    // documentation (TEST-NET-2)
+	"203.0.113.0/24",     // documentation (TEST-NET-3)
+	"198.18.0.0/15",      // benchmarking
+	"224.0.0.0/4",        // multicast
+	"240.0.0.0/4",        // reserved, includes 255.255.255.255
+	"fe80::/10",          // IPv6 link-local
+	"fec0::/10",          // deprecated site-local
+	"fd00:ec2::/32",      // AWS IPv6 metadata range
+	"ff00::/8",           // IPv6 multicast
+	"::/96",              // deprecated IPv4-compatible (::a.b.c.d); ::1 is handled as loopback first
+	"::ffff:0:0:0/96",    // SIIT (IPv4-translated)
+	"2001::/32",          // Teredo: the IPv4 address is obfuscated, so refuse the whole range
+	"64:ff9b:1::/48",     // local-use NAT64: embedding depends on the prefix length, refuse the whole range
+	"::/128",             // unspecified
 )
 
 var privateRanges = mustPrefixes(
@@ -113,7 +143,7 @@ func embeddedV4(ip netip.Addr) (netip.Addr, bool) {
 // CheckIP reports whether the policy lets the server connect to ip.
 func (p Policy) CheckIP(ip netip.Addr) error {
 	if !ip.IsValid() {
-		return fmt.Errorf("%w: invalid address", ErrRefused)
+		return refuse(ip, "invalid address")
 	}
 	ip = ip.WithZone("") // a zone ("fe80::1%eth0") must not change the verdict
 	if ip.Is4In6() {
@@ -121,20 +151,21 @@ func (p Policy) CheckIP(ip netip.Addr) error {
 	}
 	if inner, ok := embeddedV4(ip); ok {
 		if err := p.CheckIP(inner); err != nil {
-			return fmt.Errorf("%w: %s carries %s", ErrRefused, ip, inner)
+			return refuse(ip, "an address that wraps a refused IPv4 address")
 		}
 	}
-	if inAny(ip, neverAllowed) {
-		return fmt.Errorf("%w: %s is link-local, multicast, reserved or a cloud metadata address and is never allowed", ErrRefused, ip)
+	// ::1 sits inside the deprecated ::/96 block; it is loopback and is judged as such below.
+	if ip != netip.IPv6Loopback() && inAny(ip, neverAllowed) {
+		return refuse(ip, "link-local, multicast, reserved or cloud-metadata range (never allowed)")
 	}
 	if inAny(ip, p.Allowlist) {
 		return nil
 	}
 	if ip.IsLoopback() && !p.AllowLoopback {
-		return fmt.Errorf("%w: %s is a loopback address; allow it explicitly if this is intended", ErrRefused, ip)
+		return refuse(ip, "loopback address (allow it explicitly if this is intended)")
 	}
 	if !ip.IsLoopback() && (ip.IsPrivate() || inAny(ip, privateRanges)) && !p.AllowPrivate {
-		return fmt.Errorf("%w: %s is a private address; allow it explicitly if this is intended", ErrRefused, ip)
+		return refuse(ip, "private address (allow it explicitly if this is intended)")
 	}
 	return nil
 }
@@ -142,7 +173,7 @@ func (p Policy) CheckIP(ip netip.Addr) error {
 // CheckPort rejects ports that cannot be a database listener.
 func CheckPort(port int) error {
 	if port < 1 || port > 65535 {
-		return fmt.Errorf("%w: port %d is out of range", ErrRefused, port)
+		return refuse(netip.Addr{}, "port out of range")
 	}
 	return nil
 }
@@ -156,7 +187,7 @@ func (p Policy) Resolve(ctx context.Context, r Resolver, host string, port int) 
 	}
 	host = strings.TrimSpace(strings.Trim(host, "[]"))
 	if host == "" {
-		return nil, fmt.Errorf("%w: empty host", ErrRefused)
+		return nil, refuse(netip.Addr{}, "empty host")
 	}
 	var addrs []netip.Addr
 	if ip, err := netip.ParseAddr(host); err == nil {
@@ -188,7 +219,7 @@ func (p Policy) Resolve(ctx context.Context, r Resolver, host string, port int) 
 func (p Policy) control(_, address string, _ syscall.RawConn) error {
 	ap, err := netip.ParseAddrPort(address)
 	if err != nil {
-		return fmt.Errorf("%w: cannot parse destination %q", ErrRefused, address)
+		return refuse(netip.Addr{}, "unparseable destination")
 	}
 	if err := CheckPort(int(ap.Port())); err != nil {
 		return err

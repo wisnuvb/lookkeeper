@@ -58,6 +58,7 @@ var migrations = []string{
 		summary   TEXT NOT NULL
 	);
 	CREATE INDEX events_ts ON events (ts);`,
+	migrationSchemaV2, // migration state model (schema_migrate.go)
 }
 
 // Store is a handle to the state database.

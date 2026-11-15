@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/wisnuvb/lockkeeper/internal/config"
+	"github.com/wisnuvb/lockkeeper/internal/migrate/runner"
 	"github.com/wisnuvb/lockkeeper/internal/redact"
 	"github.com/wisnuvb/lockkeeper/internal/secret"
 	"github.com/wisnuvb/lockkeeper/internal/service"
@@ -87,11 +88,24 @@ func Execute(ctx context.Context, env Env, args []string) int {
 	if errors.As(err, &ee) {
 		if ee.Err != nil {
 			fmt.Fprintln(env.Stderr, "Error:", ee.Err)
+			printToolTail(env.Stderr, ee.Err)
 		}
 		return ee.Code
 	}
 	fmt.Fprintln(env.Stderr, "Error:", err)
+	printToolTail(env.Stderr, err)
 	return 1
+}
+
+// printToolTail shows the last lines of a failed tool's output on the terminal
+// only. The error value (which is stored in the audit log and the state
+// database) deliberately does not carry them; lines that can quote table rows
+// are already removed from the tail.
+func printToolTail(w io.Writer, err error) {
+	var te *runner.ToolError
+	if errors.As(err, &te) && te.Tail() != "" {
+		fmt.Fprintf(w, "Last output of %s (shown here only, not stored; the full log is %s): %s\n", te.Tool, te.LogPath, te.Tail())
+	}
 }
 
 func newRoot(env Env) *cobra.Command {
@@ -165,6 +179,7 @@ func (a *app) newService(cfg *config.Config) (*service.Service, error) {
 		Secrets:  secret.Resolver{Getenv: a.env.Getenv, ReadFile: os.ReadFile, Stat: os.Stat, Prompt: a.env.Prompt},
 		Log:      log,
 		Redactor: a.redactor,
+		Version:  Version,
 	}
 	if a.env.Deps != nil {
 		deps = a.env.Deps(deps)

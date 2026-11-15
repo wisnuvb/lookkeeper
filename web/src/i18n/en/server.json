@@ -1,0 +1,122 @@
+{
+  "back": "Servers",
+  "breadcrumb": "Breadcrumb",
+  "notFound": {
+    "title": "Server not found",
+    "hint": "No server named \"{{id}}\" is registered. It may have been removed, or the address is wrong.",
+    "back": "Back to servers"
+  },
+  "header": {
+    "planMigration": "Plan a migration from this server",
+    "planDisabledReason": "Migrating a MySQL server is not built yet (planned for a later stage). Monitoring works normally.",
+    "stale": "Stale: no recent sample",
+    "hostLabel": "Address",
+    "versionLabel": "Version",
+    "tlsLabel": "Connection security",
+    "originLabel": "Defined in",
+    "lastSampleLabel": "Last sample",
+    "planDisabledUnreachable": "This server is not answering, so a pre-flight check cannot run. Plan a migration once it is reachable again."
+  },
+  "unreachable": {
+    "title": "This server is not answering",
+    "body": "Lockkeeper could not reach it on the last checks. Everything below is the last known data and may be out of date. Alerts keep firing until the server answers again."
+  },
+  "tabs": {
+    "label": "Server sections",
+    "databases": "Databases",
+    "metrics": "Metrics",
+    "slots": "Slots & WAL",
+    "alerts": "Alerts"
+  },
+  "databases": {
+    "title": "Databases on this server",
+    "hint": "Discovered automatically from the server. Nothing needs to be registered one by one.",
+    "columns": {
+      "name": "Database",
+      "size": "Size",
+      "connections": "Connections",
+      "cacheHit": "Cache hit",
+      "xidAge": "XID age (% of limit)",
+      "noPk": "Tables without a key",
+      "health": "Status"
+    },
+    "sortBy": "Sort by {{column}}",
+    "sortedAsc": "sorted ascending",
+    "sortedDesc": "sorted descending",
+    "empty": "No databases to show.",
+    "emptyUnreachable": "No database information was collected before the server became unreachable.",
+    "notApplicable": "Not applicable",
+    "tableCaption": "Databases on {{server}}"
+  },
+  "metrics": {
+    "title": "Metrics",
+    "range": {
+      "label": "Time range",
+      "h1": "1 hour",
+      "h6": "6 hours",
+      "h24": "24 hours"
+    },
+    "pause": "Pause updates",
+    "resume": "Resume updates",
+    "liveOn": "Updating every 15 seconds",
+    "livePaused": "Updates paused",
+    "names": {
+      "connectionsUsedRatio": "Connections used",
+      "cacheHitRatio": "Cache hit ratio",
+      "retainedWalBytes": "WAL retained by slots",
+      "replicationLagSeconds": "Replication lag",
+      "xidAgeRatio": "Transaction ID age"
+    },
+    "loadingChart": "Loading chart…"
+  },
+  "chart": {
+    "current": "Current",
+    "summary": "{{title}}: currently {{current}}, lowest {{min}}, highest {{max}}, {{trend}} over the last {{range}}.",
+    "trend": {
+      "rising": "rising",
+      "falling": "falling",
+      "steady": "steady"
+    },
+    "viewTable": "View as table",
+    "viewChart": "View as chart",
+    "tableCaption": "{{title}}: values over the last {{range}}",
+    "tableRegion": "{{title}} data table, scrollable",
+    "time": "Time",
+    "value": "Value",
+    "warning": "Warning",
+    "critical": "Critical",
+    "thresholds": "Thresholds",
+    "noData": "No data for this range yet."
+  },
+  "slots": {
+    "title": "Replication slots and retained WAL",
+    "readOnlyNote": "This view is read-only. Lockkeeper never drops a slot from here: cleaning up a slot is an explicit, confirmed step of a migration, and only after a verified cutover.",
+    "notApplicableTitle": "Replication slots do not apply to MySQL",
+    "notApplicableBody": "Slots and retained WAL are PostgreSQL concepts. For MySQL, watch replication lag and binary log size in the Metrics tab.",
+    "empty": "This server has no replication slots.",
+    "columns": {
+      "name": "Slot",
+      "type": "Type",
+      "database": "Database",
+      "state": "State",
+      "retained": "Retained WAL",
+      "owner": "Created by"
+    },
+    "active": "Active",
+    "inactive": "Inactive",
+    "type": {
+      "logical": "Logical",
+      "physical": "Physical"
+    },
+    "tableCaption": "Replication slots on {{server}}",
+    "ownerNone": "Not created by Lockkeeper",
+    "ownerMigration": "Migration {{id}}",
+    "orphanTitle": "An inactive slot is holding WAL",
+    "orphanBody_one": "{{names}} keeps {{size}} of WAL on the server's disk because nothing is reading it. WAL that is not released keeps growing and can fill the disk, which stops the database. Find out who owns the slot before changing anything.",
+    "orphanBody_other": "{{names}} keep {{size}} of WAL in total on the server's disk because nothing is reading them. WAL that is not released keeps growing and can fill the disk, which stops the database. Find out who owns these slots before changing anything."
+  },
+  "alertsTab": {
+    "title": "Alerts for this server",
+    "empty": "No active alerts for this server."
+  }
+}

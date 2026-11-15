@@ -1,0 +1,46 @@
+{
+  "overview": {
+    "title": "Overview",
+    "subtitle": "Every server you monitor, with the databases on it.",
+    "addServer": "Add server",
+    "summary": {
+      "servers": "Servers",
+      "databases": "Databases",
+      "alerts": "Active alerts",
+      "alertsDetail": "{{critical}} critical, {{warning}} warning",
+      "migrations": "Migrations running"
+    },
+    "attention": "Needs attention",
+    "attentionEmpty": "No active alerts. Everything monitored is within its thresholds.",
+    "viewAllAlerts": "View all alerts",
+    "serversHeading": "Servers",
+    "migrationHeading": "Migration in progress",
+    "migrationOpen": "Open migration"
+  },
+  "servers": {
+    "title": "Servers",
+    "subtitle": "A server is one connection. Its databases are discovered automatically.",
+    "emptyTitle": "No servers yet",
+    "emptyHint": "Add a PostgreSQL or MySQL server to start monitoring every database on it.",
+    "columns": {
+      "name": "Server",
+      "engine": "Engine",
+      "status": "Status",
+      "databases": "Databases",
+      "size": "Total size",
+      "lastSample": "Last sample"
+    }
+  },
+  "card": {
+    "connections": "Connections used",
+    "retainedWal": "Retained WAL",
+    "cacheHit": "Cache hit",
+    "replLag": "Replication lag",
+    "alerts_one": "{{count}} active alert",
+    "alerts_other": "{{count}} active alerts",
+    "noAlerts": "No active alerts",
+    "lastSample": "Last sample {{when}}",
+    "stale": "Stale: no recent sample",
+    "unreachable": "Not reachable"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "overview": {
+    "title": "Ringkasan",
+    "subtitle": "Semua server yang Anda pantau, beserta database di dalamnya.",
+    "addServer": "Tambah server",
+    "summary": {
+      "servers": "Server",
+      "databases": "Database",
+      "alerts": "Peringatan aktif",
+      "alertsDetail": "{{critical}} kritis, {{warning}} peringatan",
+      "migrations": "Migrasi berjalan"
+    },
+    "attention": "Perlu perhatian",
+    "attentionEmpty": "Tidak ada peringatan aktif. Semua yang dipantau berada dalam ambangnya.",
+    "viewAllAlerts": "Lihat semua peringatan",
+    "serversHeading": "Server",
+    "migrationHeading": "Migrasi sedang berjalan",
+    "migrationOpen": "Buka migrasi"
+  },
+  "servers": {
+    "title": "Server",
+    "subtitle": "Satu server adalah satu koneksi. Database di dalamnya ditemukan otomatis.",
+    "emptyTitle": "Belum ada server",
+    "emptyHint": "Tambahkan server PostgreSQL atau MySQL untuk memantau semua database di dalamnya.",
+    "columns": {
+      "name": "Server",
+      "engine": "Mesin",
+      "status": "Status",
+      "databases": "Database",
+      "size": "Ukuran total",
+      "lastSample": "Sampel terakhir"
+    }
+  },
+  "card": {
+    "connections": "Koneksi terpakai",
+    "retainedWal": "WAL tertahan",
+    "cacheHit": "Cache hit",
+    "replLag": "Lag replikasi",
+    "alerts_one": "{{count}} peringatan aktif",
+    "alerts_other": "{{count}} peringatan aktif",
+    "noAlerts": "Tidak ada peringatan aktif",
+    "lastSample": "Sampel terakhir {{when}}",
+    "stale": "Basi: tidak ada sampel terbaru",
+    "unreachable": "Tidak terjangkau"
+  }
+}

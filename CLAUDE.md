@@ -4,10 +4,15 @@
 > engine, Telegram/Slack/email, SQLite state, optional Prometheus endpoint, optional CloudWatch
 > reader (**never run against real AWS**), `inventory` and `preflight pg` (read-only), CLI `init`,
 > `config validate`, `check`, `monitor run`, `alerts test`, `slots list`, `inventory`, `preflight pg`.
-> **In progress (branch `worktree-agent-a9effc6e5a45bf02c`, not merged):** Phase 3 migration
-> orchestrator; its spike proved the snapshot->slot handoff (see its `docs/PHASE3-NOTES.md`).
-> **Not built yet:** cutover and verification (Phase 4), MySQL migration (Phase 5), web UI + auth +
-> vault (Phase 1 slice 3). **Nothing has been validated against real RDS/Aurora.**
+> **In progress, not on `main`, not pushed:** Phase 3 migration orchestrator on the local branch
+> `integration/phase3` (29 commits ahead of `main`; its spike proved the snapshot->slot handoff, see its
+> `docs/PHASE3-NOTES.md`). **Web UI (ADR 0006):** U0 done (design system in `design-system/lockkeeper/`,
+> real frontend in `web/` on **mocked data**, ID/EN, 155 tests); U1-A done and **uncommitted** (netguard,
+> vault, auth primitives, hardened `internal/web` server, `lockkeeper serve` preview with demo data, no
+> login, loopback only; build it with `make build-ui`). **Next:** merge Phase 3 first, then U1-B (schema v3,
+> users/sessions/login, connection registry, API). **Not built yet:** cutover and verification (Phase 4),
+> MySQL migration (Phase 5), authenticated API, registry. **Nothing has been validated against real
+> RDS/Aurora.**
 > Run `make ci` (needs `staticcheck` and `govulncheck` in `$(go env GOPATH)/bin`) and
 > `make test-integration` (needs Docker; `LK_TEST_PG_IMAGE`, `LK_TEST_MYSQL_IMAGE`) before committing.
 
@@ -137,6 +142,27 @@ collector and email notifier follow within Phase 1.
 - The e2e test (`internal/e2e`) runs the real binary and scans `ps`, logs and the state DB for canary
   secrets. Keep it green; extend it when adding anything that handles a secret.
 
+## Things learned while building the web UI (2026-11-15)
+
+- **Browser tests find what unit tests cannot.** Under the strict CSP, Radix menus inject a `<style>`
+  that jsdom never blocks; only the real binary in a real browser showed it. Keep the Chrome check
+  (embedded UI, strict CSP, no `securitypolicyviolation`, no console errors) when touching the UI or CSP.
+- **Prove a test can fail.** For every security control, break it on purpose (mutation) and confirm a test
+  goes red. Twice a "mutation" did not even compile, or was equivalent code: check that the mutant builds
+  and really changes behaviour before trusting a green run.
+- **State-database versions are linear:** two branches that both append "version 2" collide silently.
+  Merge the branch that already owns the next version before adding a schema change.
+- **`commandFactories` (internal/cli/root.go)** lets a feature register commands from its own file in
+  `init()`; use it instead of editing `newRoot` (it kept `serve` out of Phase 3's way).
+- **Go toolchain:** `go.mod` pins `toolchain go1.27.4` (GO-2026-6859 `MaxBytesReader`, reachable from
+  `internal/web`). `govulncheck` is part of `make ci`; a toolchain bump is how stdlib findings are fixed.
+- Frontend dependencies are pinned exactly, installed from versions at least two weeks old
+  (`npm install --before=<date>`), with lifecycle scripts disabled (`web/.npmrc`). TypeScript 7 removed
+  `baseUrl`; use `paths` with `./` prefixes.
+- Never trust a design generator blindly: the first persisted design system was for the wrong product
+  ("fleet" matched "drone fleet"). Check the category and the fonts it returns, then override with the
+  "Lockkeeper decisions" block in `design-system/lockkeeper/MASTER.md`.
+
 ## Local environment notes (2026-11-06)
 
 Go 1.27.x and Docker are installed; `staticcheck` and `govulncheck` were installed with `go install`
@@ -161,6 +187,20 @@ security principle 3 (ciphertext at rest, master key outside the DB). The vault 
 UI slice; until then only `env:`/`file:`/prompt references exist, and nothing else may store a
 secret at rest.
 
+## Decisions made on 2026-11-15 (web UI, ADR 0006)
+
+- **Stack:** Vite + React + TypeScript + Tailwind + shadcn/ui, built to static files and embedded with
+  `go:embed`; Node is build-time only. UI languages: **Indonesian and English from the start**
+  (`react-i18next`). Fonts self-hosted (no CDN, strict CSP).
+- **Model is server-centric:** one connection = one server; its databases are discovered and shown
+  beneath it. Lockkeeper is a fleet monitor, **not** a TablePlus-style single-database client: no SQL
+  console, no table browsing/editing, no table-level ETL. "Sync/import" = full-database migration.
+- **Order:** U0 prototype (real scaffold, mocked data) -> U1 server foundation (auth, vault, registry,
+  SSRF guard T21) -> U2 monitoring UI -> U3 migration wizard (needs Phase 3 merged) -> U4 verify/cutover
+  (needs Phase 4) -> U5 MySQL.
+- `design-system/lockkeeper/MASTER.md` is the design source of truth; read its "Lockkeeper decisions"
+  block first (it overrides the generator output). Mock data must always show a visible "demo data" banner.
+
 ## Open decisions (waiting for the owner)
 
 - Name for a shipped short alias (assumed: none).
@@ -170,4 +210,5 @@ secret at rest.
 
 - `docs/SPEC.md` — goals, non-goals, MVP, config, CLI, state model, metrics/alerts, threat model.
 - `docs/ARCHITECTURE.md` — modules, boundaries, pgcopydb invocation, testing.
-- `docs/adr/` — decision records (Go; pgcopydb vs. native CDC; state storage; secrets).
+- `docs/adr/` — decision records (Go; pgcopydb vs. native CDC; state storage; secrets; web UI 0005, 0006).
+- `design-system/lockkeeper/` — UI design system (MASTER.md + per-page overrides).

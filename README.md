@@ -79,6 +79,18 @@ Planning a migration (read-only; changes nothing on either server):
 ./lockkeeper preflight pg --source rds-main --target ovh-main   # exit 0 ok, 2 warnings, 3 blockers
 ```
 
+### Web interface (preview)
+
+```sh
+make build-ui                 # needs Node 22 to build the UI; the result is one binary
+./lockkeeper serve            # http://127.0.0.1:8443, loopback only
+```
+
+This is a **preview with invented demo data**: it talks to no database and has no login yet, so it
+refuses to listen anywhere but loopback (use an SSH tunnel to look at it remotely). Sign-in, saved
+connections and real data arrive next; see [docs/adr/0006](docs/adr/0006-web-ui-stack-scope-and-delivery.md).
+The UI is available in English and Indonesian.
+
 Optional extras: a Prometheus endpoint (`monitor.metrics`, loopback only by default; note port 9187 is
 also postgres_exporter's default), and a CloudWatch reader for RDS free storage
 ([docs/cloudwatch-iam.md](docs/cloudwatch-iam.md), **never validated against real AWS**).

@@ -1,0 +1,216 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens for Lockkeeper (see design-system/lockkeeper/MASTER.md, "Lockkeeper decisions").
+ * Light and dark are defined together. Every foreground/background pair below is checked by
+ * src/design/contrast.test.ts, which parses THIS file: change a value and the test re-measures it.
+ * Components use semantic tokens only; no raw hex outside this file.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #475569;
+  --secondary: #e2e8f0;
+  --secondary-foreground: #0f172a;
+  --accent: #e2e8f0;
+  --accent-foreground: #0f172a;
+  --primary: #15803d;
+  --primary-foreground: #ffffff;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --border: #cbd5e1;
+  --input: #64748b;
+  --ring: #0f172a;
+
+  /* Status: always paired with an icon and a text label in the UI, never colour alone. */
+  --ok: #15803d;
+  --ok-soft: #dcfce7;
+  --warn: #b45309;
+  --warn-soft: #fef3c7;
+  --crit: #b91c1c;
+  --crit-soft: #fee2e2;
+  --info: #0369a1;
+  --info-soft: #e0f2fe;
+  --unknown: #475569;
+  --unknown-soft: #e2e8f0;
+
+  --chart-1: #0369a1;
+  --chart-2: #15803d;
+  --chart-3: #b45309;
+  --chart-4: #7e22ce;
+
+  --radius: 0.5rem;
+  color-scheme: light;
+}
+
+.dark {
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --card: #1b2336;
+  --card-foreground: #f8fafc;
+  --popover: #1b2336;
+  --popover-foreground: #f8fafc;
+  --muted: #272f42;
+  --muted-foreground: #a3b1c6;
+  --secondary: #272f42;
+  --secondary-foreground: #f8fafc;
+  --accent: #2e374c;
+  --accent-foreground: #f8fafc;
+  --primary: #22c55e;
+  --primary-foreground: #0f172a;
+  --destructive: #ef4444;
+  --destructive-foreground: #0f172a;
+  --border: #334155;
+  --input: #64748b;
+  --ring: #f8fafc;
+
+  --ok: #4ade80;
+  --ok-soft: #14301f;
+  --warn: #fbbf24;
+  --warn-soft: #352a10;
+  --crit: #f87171;
+  --crit-soft: #3a1a1e;
+  --info: #38bdf8;
+  --info-soft: #0f2a3d;
+  --unknown: #a3b1c6;
+  --unknown-soft: #272f42;
+
+  --chart-1: #38bdf8;
+  --chart-2: #4ade80;
+  --chart-3: #fbbf24;
+  --chart-4: #c084fc;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-crit: var(--crit);
+  --color-crit-soft: var(--crit-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-unknown: var(--unknown);
+  --color-unknown-soft: var(--unknown-soft);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+  --font-sans: "Fira Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Fira Code", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* A visible focus indicator everywhere, in both themes (WCAG 2.4.7 / 2.4.11). */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  a[href],
+  summary,
+  label[for],
+  select {
+    cursor: pointer;
+  }
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Let long identifiers (hosts, slot names, hashes) wrap instead of overflowing. */
+  .wrap-anywhere {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Honour the user's motion preference: no animation, no smooth scroll. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes lk-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lk-skeleton {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+.lk-fade-in {
+  animation: lk-fade-in 200ms ease-out both;
+}
+/* Enter animation for overlays: only while open, so a closing menu or dialog unmounts at once
+   instead of waiting for an animation that never restarts (Radix Presence waits on animation-name). */
+.lk-pop[data-state="open"] {
+  animation: lk-fade-in 200ms ease-out both;
+}
+.lk-skeleton {
+  animation: lk-skeleton 1.4s ease-in-out infinite;
+  background: var(--muted);
+  border-radius: var(--radius-sm);
+}

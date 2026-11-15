@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <!-- The server replaces __CSP_NONCE__ with a fresh random value on every response (see internal/web). -->
+    <meta name="csp-nonce" content="__CSP_NONCE__" />
+    <title>Lockkeeper</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- No inline scripts and no external origins: the production CSP forbids both (ADR 0005). -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

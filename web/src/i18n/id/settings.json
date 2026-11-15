@@ -1,0 +1,14 @@
+{
+  "title": "Pengaturan",
+  "subtitle": "Pengguna, vault kredensial, kanal notifikasi, dan retensi.",
+  "notBuiltTitle": "Belum termasuk dalam prototipe ini",
+  "notBuiltHint": "Pengaturan ini hadir bersama fondasi server (tahap U1) dan UI monitoring (tahap U2): pengguna dan peran, status vault kredensial, kanal alert dengan tombol uji, retensi, dan log audit.",
+  "planned": "Direncanakan",
+  "items": {
+    "users": "Pengguna dan peran (viewer, operator, admin)",
+    "vault": "Vault kredensial dan status kunci utama",
+    "channels": "Kanal Telegram, Slack, dan email, dengan tombol uji",
+    "retention": "Retensi metrik dan ambang alert",
+    "audit": "Log audit setiap tindakan yang mengubah sumber"
+  }
+}

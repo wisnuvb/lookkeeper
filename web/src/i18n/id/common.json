@@ -1,0 +1,80 @@
+{
+  "appName": "Lockkeeper",
+  "skipToContent": "Lompat ke konten utama",
+  "close": "Tutup",
+  "loading": "Memuat…",
+  "retry": "Coba lagi",
+  "cancel": "Batal",
+  "back": "Kembali",
+  "next": "Lanjut",
+  "save": "Simpan",
+  "copy": "Salin",
+  "copied": "Tersalin",
+  "optional": "opsional",
+  "required": "wajib",
+  "none": "Tidak ada",
+  "unknown": "Tidak diketahui",
+  "loadError": "Data ini tidak dapat dimuat.",
+  "demo": {
+    "banner": "Data demo: prototipe ini tidak terhubung ke database mana pun. Semua yang tampil adalah data karangan.",
+    "short": "Data demo"
+  },
+  "nav": {
+    "label": "Navigasi utama",
+    "overview": "Ringkasan",
+    "servers": "Server",
+    "alerts": "Peringatan",
+    "migrations": "Migrasi",
+    "settings": "Pengaturan"
+  },
+  "theme": {
+    "label": "Tema",
+    "light": "Terang",
+    "dark": "Gelap",
+    "system": "Ikuti sistem"
+  },
+  "language": {
+    "label": "Bahasa",
+    "en": "English",
+    "id": "Bahasa Indonesia"
+  },
+  "health": {
+    "ok": "Sehat",
+    "warning": "Peringatan",
+    "critical": "Kritis",
+    "unknown": "Tidak terjangkau"
+  },
+  "severity": {
+    "warning": "Peringatan",
+    "critical": "Kritis",
+    "blocker": "Penghalang",
+    "info": "Info"
+  },
+  "engine": {
+    "postgres": "PostgreSQL",
+    "mysql": "MySQL"
+  },
+  "managed": {
+    "rds": "AWS RDS",
+    "aurora": "AWS Aurora",
+    "self-hosted": "Dikelola sendiri"
+  },
+  "origin": {
+    "yaml": "Dari file konfigurasi (hanya baca)",
+    "registry": "Ditambahkan di UI"
+  },
+  "tls": {
+    "verify-full": "TLS, sertifikat dan host terverifikasi",
+    "verify-ca": "TLS, sertifikat terverifikasi",
+    "require": "TLS, server tidak diautentikasi",
+    "disable": "Tanpa TLS"
+  },
+  "units": {
+    "databases_one": "{{count}} database",
+    "databases_other": "{{count}} database"
+  },
+  "notFound": {
+    "title": "Halaman tidak ditemukan",
+    "hint": "Alamat ini tidak ada di Lockkeeper."
+  }
+}

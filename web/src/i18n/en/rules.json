@@ -1,0 +1,7 @@
+{
+  "pg_slot_retained_wal_bytes": "WAL retained by a replication slot",
+  "pg_xid_age_ratio": "Transaction ID age (wraparound risk)",
+  "mysql_replication_lag_s": "Replication lag",
+  "monitor_unreachable": "Server unreachable",
+  "unknown_rule": "Alert rule {{rule}}"
+}

@@ -1,0 +1,19 @@
+{
+  "title": "Alerts",
+  "subtitle": "What is firing across all servers, most severe first.",
+  "filters": {
+    "label": "Filter alerts",
+    "severity": "Severity",
+    "server": "Server",
+    "allSeverities": "All severities",
+    "allServers": "All servers",
+    "clear": "Clear filters"
+  },
+  "shown_one": "{{count}} alert shown",
+  "shown_other": "{{count}} alerts shown",
+  "firing": "Firing now",
+  "resolved": "Recently resolved",
+  "empty": "No active alerts. Everything monitored is within its thresholds.",
+  "emptyFiltered": "No alerts match these filters.",
+  "emptyFilteredHint": "Try another severity or server, or clear the filters."
+}

@@ -19,6 +19,15 @@ coverage.*
 master.key
 secrets/
 
+# Web UI (ADR 0006): dependencies and build output are never committed
+/web/node_modules/
+/web/dist/
+/web/*.tsbuildinfo
+
+# Embedded copy of the built UI (the placeholder stays tracked)
+/internal/webui/dist/*
+!/internal/webui/dist/.gitkeep
+
 # Editor / OS
 .idea/
 .vscode/

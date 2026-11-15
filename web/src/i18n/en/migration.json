@@ -1,0 +1,172 @@
+{
+  "copyFailed": "Could not copy. Select the text and copy it manually.",
+  "state": {
+    "draft": "Draft",
+    "planned": "Planned",
+    "approved": "Approved",
+    "copying": "Copying",
+    "following": "Following changes",
+    "caught_up": "Caught up",
+    "verifying": "Verifying",
+    "cutover_ready": "Ready for cutover",
+    "completed": "Completed",
+    "aborted": "Aborted",
+    "failed": "Failed"
+  },
+  "phase": {
+    "waiting": "Waiting",
+    "schema": "Copying schema",
+    "copying": "Copying data",
+    "following": "Following changes",
+    "caught_up": "Caught up",
+    "done": "Done",
+    "failed": "Failed"
+  },
+  "findings": {
+    "remedy": "Run this yourself on the server:",
+    "copyRemedy": "Copy command",
+    "group": {
+      "blocker": "Blockers ({{count}})",
+      "warning": "Warnings ({{count}})",
+      "info": "Information ({{count}})"
+    }
+  },
+  "list": {
+    "title": "Migrations",
+    "subtitle": "Move whole databases from one server to another, with verification before cutover.",
+    "plan": "Plan a migration",
+    "emptyTitle": "No migrations yet",
+    "emptyHint": "Pick a source and a target server, run the read-only pre-flight, and review the plan before anything is changed.",
+    "progressLabel": "Copy progress of migration {{id}}",
+    "columns": {
+      "route": "Source to target",
+      "state": "State",
+      "progress": "Progress",
+      "created": "Created",
+      "updated": "Updated"
+    }
+  },
+  "new": {
+    "title": "Plan a migration",
+    "subtitle": "Four steps. Nothing on either server changes until you approve the plan.",
+    "stepsLabel": "Migration planning progress",
+    "stepOf": "Step {{current}} of {{total}}",
+    "stepDone": "completed",
+    "steps": {
+      "choose": "Servers",
+      "preflight": "Pre-flight",
+      "plan": "Plan",
+      "approve": "Approve"
+    },
+    "choose": {
+      "heading": "Which servers?",
+      "rolesNote": "A server has no fixed role. Source and target are chosen for each migration, so the same server can be a source in one migration and a target in another.",
+      "source": "Source server",
+      "sourceHint": "The server the data is moved from. It is only read, except for the changes shown in the plan.",
+      "target": "Target server",
+      "targetHint": "The server the data is moved to.",
+      "placeholder": "Choose a server…",
+      "sameServer": "Source and target must be different servers.",
+      "mysqlTitle": "MySQL migration is not built yet",
+      "mysqlBody": "Only PostgreSQL to PostgreSQL migration exists. MySQL migration is planned for a later phase (Phase 5). You can still monitor MySQL servers.",
+      "pickBoth": "Choose both servers to continue."
+    },
+    "preflight": {
+      "heading": "Pre-flight check",
+      "readOnlyTitle": "Read-only: nothing was changed",
+      "readOnlyBody": "The pre-flight only reads settings, roles, sizes and counts from {{source}} and {{target}}. It never reads your data and never changes either server.",
+      "running": "Running the pre-flight (read-only)…",
+      "failed": "The pre-flight could not be completed.",
+      "summary": "Blockers: {{blockers}} · Warnings: {{warnings}} · Informational: {{info}}",
+      "blockedBody": "Apply the remedies yourself on the servers, then run the pre-flight again. Lockkeeper never fixes blockers silently.",
+      "warningsBody": "Warnings do not block the migration, but read them before you continue.",
+      "cleanBody": "No blockers or warnings.",
+      "rerun": "Run the pre-flight again",
+      "cannotContinue": "Resolve the blockers to continue.",
+      "blockedTitle_one": "{{count}} blocker must be resolved first",
+      "blockedTitle_other": "{{count}} blockers must be resolved first"
+    },
+    "plan": {
+      "heading": "Review the plan",
+      "building": "Building the plan…",
+      "failed": "The plan could not be built.",
+      "databases_one": "{{count}} database",
+      "databases_other": "{{count}} databases",
+      "hash": "Plan hash",
+      "hashHint": "The server computes this over the exact plan below. Approval is only accepted for this hash.",
+      "copyHash": "Copy plan hash",
+      "copyCode": "Copy SQL or command",
+      "sourceHeading": "Changes the SOURCE server",
+      "sourceHint": "These statements change the source. Read each one: they are exactly what will be run.",
+      "targetHeading": "Target side",
+      "targetHint": "These steps run against the target, or read the source without changing it."
+    },
+    "approve": {
+      "heading": "Approve the plan",
+      "warnTitle": "You are approving changes to the source server",
+      "warnBody": "Approving the plan for {{source}} to {{target}} allows the changes in the source section of the plan. Nothing is deleted on the source.",
+      "typeThis": "To approve, type this phrase exactly:",
+      "label": "Confirmation phrase",
+      "hint": "Pasting is allowed. The server checks the phrase and the plan hash again; this page cannot skip either check.",
+      "auditTitle": "Recorded in the audit log",
+      "auditBody": "Approval is recorded in the audit log with the approving user and requires the admin role. This prototype has no sign-in yet, so no user is recorded here.",
+      "button": "Approve plan",
+      "approving": "Approving…",
+      "failed": "The plan could not be approved.",
+      "reviewNewPlan": "Review the new plan",
+      "errors": {
+        "plan_hash_mismatch": {
+          "title": "The plan changed",
+          "body": "The plan changed since it was shown, so your approval was not accepted. Review the new plan before approving it."
+        },
+        "confirmation_mismatch": {
+          "body": "The confirmation text does not match the phrase. Type it exactly as shown."
+        }
+      }
+    }
+  },
+  "run": {
+    "loadingTitle": "Loading migration…",
+    "title": "Migration",
+    "subtitle": "Migration {{id}}",
+    "notFoundTitle": "Migration not found",
+    "notFoundBody": "There is no migration with the id {{id}}.",
+    "notFoundHint": "It may have been removed, or the address may be wrong.",
+    "backToList": "Back to migrations",
+    "planHash": "Plan hash",
+    "copyHash": "Copy plan hash",
+    "created": "Created",
+    "updated": "Last update",
+    "rollbackWindow": "Rollback window ends",
+    "endedBody": "This migration is no longer running. Check the source: its replication slots may still retain WAL until they are cleaned up.",
+    "timeline": "Progress",
+    "stage": {
+      "planned": "Planned",
+      "approved": "Approved",
+      "copying": "Copying",
+      "following": "Following changes",
+      "caught_up": "Caught up",
+      "verify": "Verify",
+      "cutover": "Cutover",
+      "cleanup": "Cleanup"
+    },
+    "stageDone": "done",
+    "stageCurrent": "current step",
+    "notAvailable": "Not available in this version",
+    "phase4Note": "Verification, cutover and cleanup are not built yet. Until they are, this screen cannot finish a migration safely.",
+    "warnings": "Warnings",
+    "databases": "Databases",
+    "dbProgress": "Copy progress of {{database}}",
+    "lag": "Replication lag",
+    "retainedWal": "WAL retained on source",
+    "walHigh": "high",
+    "slot": "Replication slot",
+    "rollbackHeading": "After cutover",
+    "rollbackTitle": "After cutover, writes on the target do not flow back to the source",
+    "rollbackBody": "Once applications write to the target, the source no longer receives those changes. Going back means losing them or copying them back by hand. The rollback window is recorded and blocks cleanup.",
+    "actions": "Actions",
+    "actionsUnavailable": "Abort and cleanup arrive with the real backend (stage U3). In this prototype they do nothing, so they are disabled.",
+    "abort": "Abort migration",
+    "cleanup": "Clean up source"
+  }
+}

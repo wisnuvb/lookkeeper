@@ -1,0 +1,28 @@
+import * as React from "react";
+import * as TabsPrimitive from "@radix-ui/react-tabs";
+import { cn } from "@/lib/utils";
+
+export const Tabs = TabsPrimitive.Root;
+export const TabsList = React.forwardRef<React.ComponentRef<typeof TabsPrimitive.List>, React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>>(
+  ({ className, ...p }, ref) => (
+    <TabsPrimitive.List ref={ref} className={cn("inline-flex max-w-full items-center gap-1 overflow-x-auto border-b w-full", className)} {...p} />
+  ),
+);
+TabsList.displayName = "TabsList";
+export const TabsTrigger = React.forwardRef<React.ComponentRef<typeof TabsPrimitive.Trigger>, React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>>(
+  ({ className, ...p }, ref) => (
+    <TabsPrimitive.Trigger
+      ref={ref}
+      className={cn(
+        "-mb-px inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap border-b-2 border-transparent px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:text-foreground pointer-coarse:h-11",
+        className,
+      )}
+      {...p}
+    />
+  ),
+);
+TabsTrigger.displayName = "TabsTrigger";
+export const TabsContent = React.forwardRef<React.ComponentRef<typeof TabsPrimitive.Content>, React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>>(
+  ({ className, ...p }, ref) => <TabsPrimitive.Content ref={ref} className={cn("mt-4 lk-fade-in", className)} {...p} />,
+);
+TabsContent.displayName = "TabsContent";

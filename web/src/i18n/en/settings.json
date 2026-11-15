@@ -1,0 +1,14 @@
+{
+  "title": "Settings",
+  "subtitle": "Users, credential vault, notification channels and retention.",
+  "notBuiltTitle": "Not part of this prototype",
+  "notBuiltHint": "These settings arrive with the server foundation (stage U1) and the monitoring UI (stage U2): users and roles, credential vault status, alert channels with a test button, retention and the audit log.",
+  "planned": "Planned",
+  "items": {
+    "users": "Users and roles (viewer, operator, admin)",
+    "vault": "Credential vault and master key status",
+    "channels": "Telegram, Slack and email channels, with a test button",
+    "retention": "Metric retention and alert thresholds",
+    "audit": "Audit log of every source-changing action"
+  }
+}

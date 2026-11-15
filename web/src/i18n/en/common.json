@@ -1,0 +1,80 @@
+{
+  "appName": "Lockkeeper",
+  "skipToContent": "Skip to main content",
+  "close": "Close",
+  "loading": "Loading…",
+  "retry": "Try again",
+  "cancel": "Cancel",
+  "back": "Back",
+  "next": "Next",
+  "save": "Save",
+  "copy": "Copy",
+  "copied": "Copied",
+  "optional": "optional",
+  "required": "required",
+  "none": "None",
+  "unknown": "Unknown",
+  "loadError": "Could not load this data.",
+  "demo": {
+    "banner": "Demo data: this prototype is not connected to any database. Everything you see is invented.",
+    "short": "Demo data"
+  },
+  "nav": {
+    "label": "Main navigation",
+    "overview": "Overview",
+    "servers": "Servers",
+    "alerts": "Alerts",
+    "migrations": "Migrations",
+    "settings": "Settings"
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "id": "Bahasa Indonesia"
+  },
+  "health": {
+    "ok": "Healthy",
+    "warning": "Warning",
+    "critical": "Critical",
+    "unknown": "Unreachable"
+  },
+  "severity": {
+    "warning": "Warning",
+    "critical": "Critical",
+    "blocker": "Blocker",
+    "info": "Info"
+  },
+  "engine": {
+    "postgres": "PostgreSQL",
+    "mysql": "MySQL"
+  },
+  "managed": {
+    "rds": "AWS RDS",
+    "aurora": "AWS Aurora",
+    "self-hosted": "Self-hosted"
+  },
+  "origin": {
+    "yaml": "From config file (read-only)",
+    "registry": "Added in the UI"
+  },
+  "tls": {
+    "verify-full": "TLS, certificate and host verified",
+    "verify-ca": "TLS, certificate verified",
+    "require": "TLS, server not authenticated",
+    "disable": "No TLS"
+  },
+  "units": {
+    "databases_one": "{{count}} database",
+    "databases_other": "{{count}} databases"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "hint": "This address does not exist in Lockkeeper."
+  }
+}

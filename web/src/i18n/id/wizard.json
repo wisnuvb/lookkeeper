@@ -1,0 +1,158 @@
+{
+  "title": "Tambah server",
+  "subtitle": "Satu koneksi mencakup satu server utuh. Database di dalamnya ditemukan otomatis.",
+  "stepsLabel": "Kemajuan penambahan server",
+  "stepOf": "Langkah {{current}} dari {{total}}",
+  "stepDone": "selesai",
+  "requiredNote": "Kolom bertanda * wajib diisi.",
+  "errorSummaryTitle_one": "1 masalah perlu diperbaiki sebelum lanjut",
+  "errorSummaryTitle_other": "{{count}} masalah perlu diperbaiki sebelum lanjut",
+  "copyFailed": "Gagal menyalin. Pilih teksnya lalu salin secara manual.",
+  "steps": {
+    "engine": "Mesin",
+    "endpoint": "Alamat",
+    "credentials": "Kredensial",
+    "test": "Uji",
+    "review": "Tinjau"
+  },
+  "engine": {
+    "heading": "Mesin database apa?",
+    "hint": "Pilih mesin dari server yang ingin Anda pantau.",
+    "selected": "Dipilih",
+    "postgres": {
+      "name": "PostgreSQL",
+      "description": "Versi 12 ke atas. Replication slot dan WAL yang ditahannya ikut dipantau."
+    },
+    "mysql": {
+      "name": "MySQL",
+      "description": "Versi 8.0 dan 8.4. MariaDB dan versi yang lebih lama ditolak."
+    }
+  },
+  "endpoint": {
+    "heading": "Di mana server-nya?",
+    "name": "Nama",
+    "nameHint": "Nama server ini di Lockkeeper. Huruf, angka, - dan _.",
+    "host": "Host",
+    "hostHint": "Nama DNS atau alamat IP, tanpa port dan tanpa protokol.",
+    "port": "Port",
+    "database": "Database sesi",
+    "databaseHint": "Hanya database untuk membuka sesi. Semua database lain di server ditemukan otomatis.",
+    "databaseHintMysql": "Opsional. Hanya untuk membuka sesi. Semua database di server ditemukan otomatis.",
+    "tls": "Mode TLS",
+    "tlsOptions": {
+      "verify-full": "verify-full (disarankan)",
+      "verify-ca": "verify-ca",
+      "require": "require",
+      "disable": "disable"
+    },
+    "tlsHint": {
+      "verify-full": "Mengenkripsi koneksi dan memeriksa sertifikat serta nama host. Ini default, dan satu-satunya mode yang membuktikan Anda terhubung ke server yang benar.",
+      "verify-ca": "Mengenkripsi koneksi dan memeriksa rantai sertifikat, tetapi tidak memeriksa nama host.",
+      "require": "Mengenkripsi koneksi tanpa memeriksa siapa yang ada di seberang.",
+      "disable": "Tanpa enkripsi sama sekali. Hanya untuk server di mesin ini."
+    },
+    "tlsWarningTitle": "Mode TLS lebih lemah",
+    "tlsWarning": {
+      "verify-ca": "Nama host tidak diperiksa, jadi sertifikat valid milik host lain akan diterima.",
+      "require": "Koneksi terenkripsi tetapi server tidak diautentikasi, sehingga pihak di tengah bisa menyamar sebagai server.",
+      "disable": "Lalu lintas, termasuk password, tidak terenkripsi. Server remote menolak mode ini kecuali Anda memilihnya secara eksplisit."
+    },
+    "caPem": "Sertifikat CA (PEM)",
+    "caPemHint": "Opsional. Tempelkan jika server memakai otoritas sertifikat privat."
+  },
+  "credentials": {
+    "heading": "Akun mana yang dipakai Lockkeeper?",
+    "intro": "Pakai akun khusus dengan hak minimal, bukan administrator. Buat dulu di server.",
+    "user": "Pengguna",
+    "password": "Password",
+    "passwordHint": "Disimpan terenkripsi dan tidak pernah ditampilkan lagi. Menempel (paste) dan password manager diizinkan.",
+    "passwordSetHint": "Password sudah diisi. Biarkan kosong untuk mempertahankannya, atau ketik yang baru.",
+    "show": "Tampilkan password",
+    "hide": "Sembunyikan password",
+    "roleHeading": "Akun yang perlu dibuat di server",
+    "roleHint": {
+      "postgres": "Lockkeeper memperingatkan jika akun adalah superuser, bisa replikasi, atau tidak punya pg_monitor. Sesi read-only bukan batas keamanan: hak akun itulah batasnya.",
+      "mysql": "Ini persis hak yang dibutuhkan. Lockkeeper memperingatkan jika akun bisa melakukan lebih banyak."
+    },
+    "copyRole": "Salin SQL akun"
+  },
+  "test": {
+    "heading": "Uji koneksi",
+    "intro": "Pengujian bersifat read-only. Ia membuka satu sesi, membaca versi, hak akses, dan daftar database, serta tidak mengubah apa pun.",
+    "run": "Uji koneksi",
+    "rerun": "Uji lagi",
+    "running": "Menguji koneksi (maksimal 10 detik)…",
+    "staleNote": "Anda mengubah detail koneksi setelah pengujian terakhir. Uji lagi sebelum melanjutkan.",
+    "errorGeneric": "Pengujian tidak dapat dijalankan.",
+    "needsTest": "Tombol Lanjut aktif setelah pengujian berhasil.",
+    "passed": "Koneksi berhasil",
+    "version": "Versi server",
+    "tls": "TLS",
+    "tlsVerified": "Sertifikat dan nama host terverifikasi",
+    "tlsNotVerified": "Server tidak diautentikasi",
+    "managed": "Hosting",
+    "privileges": "Hak akses akun",
+    "priv": {
+      "superuser": "Superuser",
+      "replication": "Bisa replikasi",
+      "monitor": "Peran monitoring",
+      "readOnlySession": "Sesi read-only"
+    },
+    "yes": "Ya",
+    "no": "Tidak",
+    "findings": "Temuan",
+    "discovered": "Database ditemukan ({{count}})",
+    "discoveredHint": "Semuanya akan dipantau. Anda tidak perlu mendaftarkan database satu per satu.",
+    "dbName": "Database",
+    "dbSize": "Ukuran",
+    "fix": {
+      "endpoint": "Ubah alamat",
+      "credentials": "Ubah kredensial"
+    },
+    "errors": {
+      "unreachable": {
+        "title": "Server tidak dapat dijangkau",
+        "recovery": "Periksa host, port, dan firewall atau security group, lalu uji lagi."
+      },
+      "tls": {
+        "title": "Persyaratan TLS tidak terpenuhi",
+        "recovery": "Pakai verify-full dengan sertifikat CA yang benar. Server remote menolak koneksi tanpa enkripsi."
+      },
+      "auth": {
+        "title": "Autentikasi gagal",
+        "recovery": "Periksa pengguna dan password. Kolom password kosong jika belum pernah diketik."
+      },
+      "refused-address": {
+        "title": "Alamat ini tidak pernah diizinkan",
+        "recovery": "Alamat link-local dan metadata cloud selalu ditolak. Pakai alamat server database."
+      }
+    }
+  },
+  "review": {
+    "heading": "Tinjau dan simpan",
+    "intro": "Periksa detailnya. Password disimpan terenkripsi dan tidak pernah ditampilkan lagi.",
+    "engine": "Mesin",
+    "name": "Nama",
+    "address": "Alamat",
+    "session": "Database sesi",
+    "tls": "TLS",
+    "user": "Pengguna",
+    "password": "Password",
+    "passwordSet": "Sudah diisi (disembunyikan)",
+    "databases": "Database ditemukan",
+    "save": "Simpan server",
+    "saving": "Menyimpan…",
+    "saveFailed": "Server tidak dapat disimpan",
+    "changeName": "Pilih nama lain"
+  },
+  "errors": {
+    "nameRequired": "Isi nama untuk server ini.",
+    "nameFormat": "Pakai hanya huruf, angka, - dan _, diawali huruf atau angka.",
+    "hostRequired": "Isi nama host atau alamat IP.",
+    "hostFormat": "Isi hanya host: tanpa spasi, tanpa protokol, tanpa port.",
+    "portInvalid": "Isi port antara 1 dan 65535.",
+    "databaseRequired": "Isi database untuk membuka sesi.",
+    "userRequired": "Isi nama pengguna.",
+    "passwordRequired": "Isi password."
+  }
+}

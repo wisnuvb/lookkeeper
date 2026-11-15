@@ -1,0 +1,19 @@
+{
+  "title": "Peringatan",
+  "subtitle": "Apa yang sedang menyala di semua server, dari yang paling parah.",
+  "filters": {
+    "label": "Saring peringatan",
+    "severity": "Tingkat keparahan",
+    "server": "Server",
+    "allSeverities": "Semua tingkat",
+    "allServers": "Semua server",
+    "clear": "Hapus saringan"
+  },
+  "shown_one": "{{count}} peringatan ditampilkan",
+  "shown_other": "{{count}} peringatan ditampilkan",
+  "firing": "Sedang menyala",
+  "resolved": "Baru saja selesai",
+  "empty": "Tidak ada peringatan aktif. Semua yang dipantau berada dalam ambangnya.",
+  "emptyFiltered": "Tidak ada peringatan yang cocok dengan saringan ini.",
+  "emptyFilteredHint": "Coba tingkat atau server lain, atau hapus saringan."
+}

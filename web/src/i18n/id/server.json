@@ -1,0 +1,122 @@
+{
+  "back": "Server",
+  "breadcrumb": "Jejak navigasi",
+  "notFound": {
+    "title": "Server tidak ditemukan",
+    "hint": "Tidak ada server bernama \"{{id}}\". Mungkin sudah dihapus, atau alamatnya salah.",
+    "back": "Kembali ke daftar server"
+  },
+  "header": {
+    "planMigration": "Rencanakan migrasi dari server ini",
+    "planDisabledReason": "Migrasi server MySQL belum dibangun (direncanakan di tahap berikutnya). Monitoring berjalan normal.",
+    "stale": "Basi: tidak ada sampel terbaru",
+    "hostLabel": "Alamat",
+    "versionLabel": "Versi",
+    "tlsLabel": "Keamanan koneksi",
+    "originLabel": "Didefinisikan di",
+    "lastSampleLabel": "Sampel terakhir",
+    "planDisabledUnreachable": "Server ini tidak menjawab, sehingga pre-flight tidak bisa dijalankan. Rencanakan migrasi setelah server terjangkau lagi."
+  },
+  "unreachable": {
+    "title": "Server ini tidak menjawab",
+    "body": "Lockkeeper tidak dapat menjangkaunya pada pemeriksaan terakhir. Semua data di bawah adalah data terakhir yang diketahui dan mungkin sudah usang. Peringatan tetap menyala sampai server menjawab lagi."
+  },
+  "tabs": {
+    "label": "Bagian server",
+    "databases": "Database",
+    "metrics": "Metrik",
+    "slots": "Slot & WAL",
+    "alerts": "Peringatan"
+  },
+  "databases": {
+    "title": "Database di server ini",
+    "hint": "Ditemukan otomatis dari server. Tidak perlu mendaftarkannya satu per satu.",
+    "columns": {
+      "name": "Database",
+      "size": "Ukuran",
+      "connections": "Koneksi",
+      "cacheHit": "Cache hit",
+      "xidAge": "Umur XID (% dari batas)",
+      "noPk": "Tabel tanpa kunci",
+      "health": "Status"
+    },
+    "sortBy": "Urutkan menurut {{column}}",
+    "sortedAsc": "diurutkan naik",
+    "sortedDesc": "diurutkan turun",
+    "empty": "Tidak ada database untuk ditampilkan.",
+    "emptyUnreachable": "Belum ada informasi database yang terkumpul sebelum server menjadi tidak terjangkau.",
+    "notApplicable": "Tidak berlaku",
+    "tableCaption": "Database di {{server}}"
+  },
+  "metrics": {
+    "title": "Metrik",
+    "range": {
+      "label": "Rentang waktu",
+      "h1": "1 jam",
+      "h6": "6 jam",
+      "h24": "24 jam"
+    },
+    "pause": "Jeda pembaruan",
+    "resume": "Lanjutkan pembaruan",
+    "liveOn": "Diperbarui setiap 15 detik",
+    "livePaused": "Pembaruan dijeda",
+    "names": {
+      "connectionsUsedRatio": "Koneksi terpakai",
+      "cacheHitRatio": "Rasio cache hit",
+      "retainedWalBytes": "WAL tertahan oleh slot",
+      "replicationLagSeconds": "Lag replikasi",
+      "xidAgeRatio": "Umur ID transaksi"
+    },
+    "loadingChart": "Memuat grafik…"
+  },
+  "chart": {
+    "current": "Saat ini",
+    "summary": "{{title}}: saat ini {{current}}, terendah {{min}}, tertinggi {{max}}, {{trend}} selama {{range}} terakhir.",
+    "trend": {
+      "rising": "naik",
+      "falling": "turun",
+      "steady": "stabil"
+    },
+    "viewTable": "Lihat sebagai tabel",
+    "viewChart": "Lihat sebagai grafik",
+    "tableCaption": "{{title}}: nilai selama {{range}} terakhir",
+    "tableRegion": "Tabel data {{title}}, dapat digulir",
+    "time": "Waktu",
+    "value": "Nilai",
+    "warning": "Peringatan",
+    "critical": "Kritis",
+    "thresholds": "Ambang batas",
+    "noData": "Belum ada data untuk rentang ini."
+  },
+  "slots": {
+    "title": "Replication slot dan WAL tertahan",
+    "readOnlyNote": "Tampilan ini hanya baca. Lockkeeper tidak pernah menghapus slot dari sini: membersihkan slot adalah langkah eksplisit yang dikonfirmasi dalam sebuah migrasi, dan hanya setelah cutover terverifikasi.",
+    "notApplicableTitle": "Replication slot tidak berlaku untuk MySQL",
+    "notApplicableBody": "Slot dan WAL tertahan adalah konsep PostgreSQL. Untuk MySQL, pantau lag replikasi dan ukuran binary log di tab Metrik.",
+    "empty": "Server ini tidak memiliki replication slot.",
+    "columns": {
+      "name": "Slot",
+      "type": "Tipe",
+      "database": "Database",
+      "state": "Status",
+      "retained": "WAL tertahan",
+      "owner": "Dibuat oleh"
+    },
+    "active": "Aktif",
+    "inactive": "Tidak aktif",
+    "type": {
+      "logical": "Logical",
+      "physical": "Physical"
+    },
+    "tableCaption": "Replication slot di {{server}}",
+    "ownerNone": "Bukan dibuat oleh Lockkeeper",
+    "ownerMigration": "Migrasi {{id}}",
+    "orphanTitle": "Ada slot tidak aktif yang menahan WAL",
+    "orphanBody_one": "{{names}} menahan WAL sebesar {{size}} di disk server karena tidak ada yang membacanya. WAL yang tidak dilepas terus bertambah dan bisa memenuhi disk, sehingga database berhenti. Cari tahu siapa pemilik slot sebelum mengubah apa pun.",
+    "orphanBody_other": "{{names}} menahan WAL sebesar {{size}} secara total di disk server karena tidak ada yang membacanya. WAL yang tidak dilepas terus bertambah dan bisa memenuhi disk, sehingga database berhenti. Cari tahu siapa pemilik slot-slot ini sebelum mengubah apa pun."
+  },
+  "alertsTab": {
+    "title": "Peringatan untuk server ini",
+    "empty": "Tidak ada peringatan aktif untuk server ini."
+  }
+}

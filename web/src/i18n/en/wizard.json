@@ -1,0 +1,158 @@
+{
+  "title": "Add a server",
+  "subtitle": "One connection covers a whole server. The databases on it are discovered automatically.",
+  "stepsLabel": "Add server progress",
+  "stepOf": "Step {{current}} of {{total}}",
+  "stepDone": "completed",
+  "requiredNote": "Fields marked * are required.",
+  "errorSummaryTitle_one": "1 problem to fix before continuing",
+  "errorSummaryTitle_other": "{{count}} problems to fix before continuing",
+  "copyFailed": "Could not copy. Select the text and copy it manually.",
+  "steps": {
+    "engine": "Engine",
+    "endpoint": "Endpoint",
+    "credentials": "Credentials",
+    "test": "Test",
+    "review": "Review"
+  },
+  "engine": {
+    "heading": "Which database engine?",
+    "hint": "Choose the engine of the server you want to monitor.",
+    "selected": "Selected",
+    "postgres": {
+      "name": "PostgreSQL",
+      "description": "Version 12 and later. Replication slots and the WAL they retain are monitored."
+    },
+    "mysql": {
+      "name": "MySQL",
+      "description": "Versions 8.0 and 8.4. MariaDB and older versions are refused."
+    }
+  },
+  "endpoint": {
+    "heading": "Where is the server?",
+    "name": "Name",
+    "nameHint": "How this server is shown in Lockkeeper. Letters, digits, - and _.",
+    "host": "Host",
+    "hostHint": "DNS name or IP address, without a port or a protocol.",
+    "port": "Port",
+    "database": "Session database",
+    "databaseHint": "Only the database used to open the session. Every other database on the server is discovered automatically.",
+    "databaseHintMysql": "Optional. Only used to open the session. Every database on the server is discovered automatically.",
+    "tls": "TLS mode",
+    "tlsOptions": {
+      "verify-full": "verify-full (recommended)",
+      "verify-ca": "verify-ca",
+      "require": "require",
+      "disable": "disable"
+    },
+    "tlsHint": {
+      "verify-full": "Encrypts the connection and checks both the certificate and the host name. The default, and the only mode that proves you reached the right server.",
+      "verify-ca": "Encrypts the connection and checks the certificate chain, but not the host name.",
+      "require": "Encrypts the connection without checking who is on the other end.",
+      "disable": "No encryption at all. Meant for a server on this machine only."
+    },
+    "tlsWarningTitle": "Weaker TLS mode",
+    "tlsWarning": {
+      "verify-ca": "The host name is not checked, so a valid certificate for another host would be accepted.",
+      "require": "The connection is encrypted but the server is not authenticated, so someone in the middle could impersonate it.",
+      "disable": "Traffic, including the password, is not encrypted. Remote servers refuse this mode unless you opt in explicitly."
+    },
+    "caPem": "CA certificate (PEM)",
+    "caPemHint": "Optional. Paste it when the server uses a private certificate authority."
+  },
+  "credentials": {
+    "heading": "Which account should Lockkeeper use?",
+    "intro": "Use a dedicated least-privilege account, not an administrator. Create it on the server first.",
+    "user": "User",
+    "password": "Password",
+    "passwordHint": "Stored encrypted and never shown again. Pasting and password managers are allowed.",
+    "passwordSetHint": "A password is already set. Leave this empty to keep it, or type a new one.",
+    "show": "Show password",
+    "hide": "Hide password",
+    "roleHeading": "Account to create on the server",
+    "roleHint": {
+      "postgres": "Lockkeeper warns if the account is a superuser, can replicate, or lacks pg_monitor. A read-only session is not a security boundary: the account's privileges are.",
+      "mysql": "These are exactly the grants needed. Lockkeeper warns if the account can do more."
+    },
+    "copyRole": "Copy account SQL"
+  },
+  "test": {
+    "heading": "Test the connection",
+    "intro": "The test is read-only. It opens one session, reads the version, privileges and database list, and changes nothing.",
+    "run": "Test connection",
+    "rerun": "Test again",
+    "running": "Testing the connection (up to 10 seconds)…",
+    "staleNote": "You changed the connection details after the last test. Test again before continuing.",
+    "errorGeneric": "The test could not be run.",
+    "needsTest": "Next is available after a successful test.",
+    "passed": "Connection works",
+    "version": "Server version",
+    "tls": "TLS",
+    "tlsVerified": "Certificate and host name verified",
+    "tlsNotVerified": "The server was not authenticated",
+    "managed": "Hosting",
+    "privileges": "Account privileges",
+    "priv": {
+      "superuser": "Superuser",
+      "replication": "Can replicate",
+      "monitor": "Monitoring role",
+      "readOnlySession": "Read-only session"
+    },
+    "yes": "Yes",
+    "no": "No",
+    "findings": "Findings",
+    "discovered": "Databases found ({{count}})",
+    "discoveredHint": "All of them will be monitored. You do not register databases one by one.",
+    "dbName": "Database",
+    "dbSize": "Size",
+    "fix": {
+      "endpoint": "Edit endpoint",
+      "credentials": "Edit credentials"
+    },
+    "errors": {
+      "unreachable": {
+        "title": "The server could not be reached",
+        "recovery": "Check the host, the port and any firewall or security group, then test again."
+      },
+      "tls": {
+        "title": "The TLS requirements were not met",
+        "recovery": "Use verify-full with the right CA certificate. Remote servers refuse unencrypted connections."
+      },
+      "auth": {
+        "title": "Authentication failed",
+        "recovery": "Check the user and the password. The password field is empty if it was never typed."
+      },
+      "refused-address": {
+        "title": "This address is never allowed",
+        "recovery": "Link-local and cloud metadata addresses are always refused. Use the address of the database server."
+      }
+    }
+  },
+  "review": {
+    "heading": "Review and save",
+    "intro": "Check the details. The password is stored encrypted and is never shown again.",
+    "engine": "Engine",
+    "name": "Name",
+    "address": "Address",
+    "session": "Session database",
+    "tls": "TLS",
+    "user": "User",
+    "password": "Password",
+    "passwordSet": "Set (hidden)",
+    "databases": "Databases found",
+    "save": "Save server",
+    "saving": "Saving…",
+    "saveFailed": "The server could not be saved",
+    "changeName": "Choose another name"
+  },
+  "errors": {
+    "nameRequired": "Enter a name for this server.",
+    "nameFormat": "Use letters, digits, - and _ only, starting with a letter or digit.",
+    "hostRequired": "Enter the host name or IP address.",
+    "hostFormat": "Enter only the host: no spaces, no protocol, no port.",
+    "portInvalid": "Enter a port between 1 and 65535.",
+    "databaseRequired": "Enter the database used to open the session.",
+    "userRequired": "Enter the user name.",
+    "passwordRequired": "Enter the password."
+  }
+}

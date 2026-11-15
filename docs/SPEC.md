@@ -176,7 +176,9 @@ migrations:
 
 Connections may instead be created dynamically (UI/API/`lockkeeper connections add`) and live in
 the local DB; YAML entries are read-only and take precedence on name clashes. A connection carries
-no "source"/"target" role.
+no "source"/"target" role. **A connection is a server, not a database** (ADR 0006): the databases on
+it are discovered and shown beneath it; the `database:` field only names the database used to open
+the session.
 
 Rules: unknown keys are errors; inline plaintext secrets are errors; file permissions of referenced
 secret files and of the config itself are checked.
@@ -481,6 +483,8 @@ Assets: production data, database credentials, replication slot health, integrit
 | T19 | Email channel: credentials or alerts in the clear, STARTTLS stripping, header injection | server certificate always verified; no downgrade when STARTTLS is missing; credentials only after TLS (re-checked right before AUTH, also against the real peer address); `tls: none` refused for non-loopback hosts; CR/LF and control characters rejected in addresses and flattened in subject; errors scrubbed of password and AUTH blob; only AUTH PLAIN supported |
 | T20 | Prometheus endpoint: unauthenticated, labels can contain table names, DNS rebinding | off by default; loopback only unless `allow_non_loopback` (then warned); bound socket re-checked; Host header must be loopback while loopback-only; GET /metrics only; no query text in any label |
 | T18 | Privilege escalation between roles (viewer → operator → admin) | role checks centralised in the service layer, per-route tests that assert denial for every role/route pair |
+| T21 | SSRF: a user who can create or test a connection makes the server connect to an arbitrary host/port (internal network scan, cloud metadata service) | ADR 0006 item 8: `admin` only; PostgreSQL/MySQL protocols only; link-local and metadata addresses always refused; loopback/private ranges only via explicit allowlist; strict timeouts, rate limit, audit of every test; tests for each refused range |
+| T22 | Frontend supply chain: a malicious or vulnerable npm dependency ends up in the embedded UI | pinned exact versions + committed lockfile, `npm audit` for production dependencies in CI, few mainstream dependencies, licence list before release, strict CSP (no inline script, no external origins), build in CI from the lockfile only |
 
 ## 13. Quality and testing summary
 

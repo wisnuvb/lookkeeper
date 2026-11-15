@@ -1,0 +1,7 @@
+{
+  "pg_slot_retained_wal_bytes": "WAL tertahan oleh replication slot",
+  "pg_xid_age_ratio": "Umur ID transaksi (risiko wraparound)",
+  "mysql_replication_lag_s": "Lag replikasi",
+  "monitor_unreachable": "Server tidak terjangkau",
+  "unknown_rule": "Aturan alert {{rule}}"
+}

@@ -1,0 +1,172 @@
+{
+  "copyFailed": "Gagal menyalin. Pilih teksnya lalu salin secara manual.",
+  "state": {
+    "draft": "Draf",
+    "planned": "Direncanakan",
+    "approved": "Disetujui",
+    "copying": "Menyalin",
+    "following": "Mengikuti perubahan",
+    "caught_up": "Sudah menyusul",
+    "verifying": "Memverifikasi",
+    "cutover_ready": "Siap cutover",
+    "completed": "Selesai",
+    "aborted": "Dibatalkan",
+    "failed": "Gagal"
+  },
+  "phase": {
+    "waiting": "Menunggu",
+    "schema": "Menyalin skema",
+    "copying": "Menyalin data",
+    "following": "Mengikuti perubahan",
+    "caught_up": "Sudah menyusul",
+    "done": "Selesai",
+    "failed": "Gagal"
+  },
+  "findings": {
+    "remedy": "Jalankan sendiri di server:",
+    "copyRemedy": "Salin perintah",
+    "group": {
+      "blocker": "Penghalang ({{count}})",
+      "warning": "Peringatan ({{count}})",
+      "info": "Informasi ({{count}})"
+    }
+  },
+  "list": {
+    "title": "Migrasi",
+    "subtitle": "Pindahkan database utuh dari satu server ke server lain, dengan verifikasi sebelum cutover.",
+    "plan": "Rencanakan migrasi",
+    "emptyTitle": "Belum ada migrasi",
+    "emptyHint": "Pilih server sumber dan target, jalankan pre-flight yang read-only, lalu tinjau rencananya sebelum ada yang diubah.",
+    "progressLabel": "Kemajuan penyalinan migrasi {{id}}",
+    "columns": {
+      "route": "Sumber ke target",
+      "state": "Status",
+      "progress": "Kemajuan",
+      "created": "Dibuat",
+      "updated": "Diperbarui"
+    }
+  },
+  "new": {
+    "title": "Rencanakan migrasi",
+    "subtitle": "Empat langkah. Tidak ada yang berubah di kedua server sampai Anda menyetujui rencananya.",
+    "stepsLabel": "Kemajuan perencanaan migrasi",
+    "stepOf": "Langkah {{current}} dari {{total}}",
+    "stepDone": "selesai",
+    "steps": {
+      "choose": "Server",
+      "preflight": "Pre-flight",
+      "plan": "Rencana",
+      "approve": "Setujui"
+    },
+    "choose": {
+      "heading": "Server mana?",
+      "rolesNote": "Server tidak punya peran tetap. Sumber dan target dipilih untuk setiap migrasi, jadi server yang sama bisa menjadi sumber di satu migrasi dan target di migrasi lain.",
+      "source": "Server sumber",
+      "sourceHint": "Server asal data dipindahkan. Ia hanya dibaca, kecuali perubahan yang tampil di rencana.",
+      "target": "Server target",
+      "targetHint": "Server tujuan data dipindahkan.",
+      "placeholder": "Pilih server…",
+      "sameServer": "Sumber dan target harus server yang berbeda.",
+      "mysqlTitle": "Migrasi MySQL belum dibangun",
+      "mysqlBody": "Baru ada migrasi PostgreSQL ke PostgreSQL. Migrasi MySQL direncanakan di fase berikutnya (Fase 5). Server MySQL tetap bisa dipantau.",
+      "pickBoth": "Pilih kedua server untuk melanjutkan."
+    },
+    "preflight": {
+      "heading": "Pemeriksaan pre-flight",
+      "readOnlyTitle": "Read-only: tidak ada yang diubah",
+      "readOnlyBody": "Pre-flight hanya membaca pengaturan, peran, ukuran, dan jumlah dari {{source}} dan {{target}}. Ia tidak pernah membaca data Anda dan tidak mengubah kedua server.",
+      "running": "Menjalankan pre-flight (read-only)…",
+      "failed": "Pre-flight tidak dapat diselesaikan.",
+      "summary": "Penghalang: {{blockers}} · Peringatan: {{warnings}} · Informasi: {{info}}",
+      "blockedBody": "Terapkan sendiri solusinya di server, lalu jalankan pre-flight lagi. Lockkeeper tidak pernah memperbaiki penghalang secara diam-diam.",
+      "warningsBody": "Peringatan tidak menghalangi migrasi, tetapi bacalah sebelum melanjutkan.",
+      "cleanBody": "Tidak ada penghalang atau peringatan.",
+      "rerun": "Jalankan pre-flight lagi",
+      "cannotContinue": "Selesaikan penghalang untuk melanjutkan.",
+      "blockedTitle_one": "{{count}} penghalang harus diselesaikan dulu",
+      "blockedTitle_other": "{{count}} penghalang harus diselesaikan dulu"
+    },
+    "plan": {
+      "heading": "Tinjau rencana",
+      "building": "Menyusun rencana…",
+      "failed": "Rencana tidak dapat disusun.",
+      "databases_one": "{{count}} database",
+      "databases_other": "{{count}} database",
+      "hash": "Hash rencana",
+      "hashHint": "Server menghitungnya dari rencana persis di bawah. Persetujuan hanya diterima untuk hash ini.",
+      "copyHash": "Salin hash rencana",
+      "copyCode": "Salin SQL atau perintah",
+      "sourceHeading": "Mengubah server SUMBER",
+      "sourceHint": "Pernyataan ini mengubah sumber. Baca satu per satu: inilah yang persis akan dijalankan.",
+      "targetHeading": "Sisi target",
+      "targetHint": "Langkah ini berjalan di target, atau membaca sumber tanpa mengubahnya."
+    },
+    "approve": {
+      "heading": "Setujui rencana",
+      "warnTitle": "Anda menyetujui perubahan pada server sumber",
+      "warnBody": "Menyetujui rencana {{source}} ke {{target}} mengizinkan perubahan di bagian sumber pada rencana. Tidak ada yang dihapus di sumber.",
+      "typeThis": "Untuk menyetujui, ketik frasa ini persis seperti tertulis:",
+      "label": "Frasa konfirmasi",
+      "hint": "Menempel (paste) diizinkan. Server memeriksa ulang frasa dan hash rencana; halaman ini tidak bisa melewati kedua pemeriksaan itu.",
+      "auditTitle": "Tercatat di log audit",
+      "auditBody": "Persetujuan dicatat di log audit beserta pengguna yang menyetujui dan memerlukan peran admin. Prototipe ini belum punya login, jadi belum ada pengguna yang tercatat di sini.",
+      "button": "Setujui rencana",
+      "approving": "Menyetujui…",
+      "failed": "Rencana tidak dapat disetujui.",
+      "reviewNewPlan": "Tinjau rencana baru",
+      "errors": {
+        "plan_hash_mismatch": {
+          "title": "Rencana berubah",
+          "body": "Rencana berubah sejak ditampilkan, jadi persetujuan Anda tidak diterima. Tinjau rencana baru sebelum menyetujuinya."
+        },
+        "confirmation_mismatch": {
+          "body": "Teks konfirmasi tidak sama dengan frasa. Ketik persis seperti yang tertulis."
+        }
+      }
+    }
+  },
+  "run": {
+    "loadingTitle": "Memuat migrasi…",
+    "title": "Migrasi",
+    "subtitle": "Migrasi {{id}}",
+    "notFoundTitle": "Migrasi tidak ditemukan",
+    "notFoundBody": "Tidak ada migrasi dengan id {{id}}.",
+    "notFoundHint": "Mungkin sudah dihapus, atau alamatnya salah.",
+    "backToList": "Kembali ke daftar migrasi",
+    "planHash": "Hash rencana",
+    "copyHash": "Salin hash rencana",
+    "created": "Dibuat",
+    "updated": "Pembaruan terakhir",
+    "rollbackWindow": "Jendela rollback berakhir",
+    "endedBody": "Migrasi ini tidak lagi berjalan. Periksa sumber: replication slot-nya mungkin masih menahan WAL sampai dibersihkan.",
+    "timeline": "Kemajuan",
+    "stage": {
+      "planned": "Direncanakan",
+      "approved": "Disetujui",
+      "copying": "Menyalin",
+      "following": "Mengikuti perubahan",
+      "caught_up": "Sudah menyusul",
+      "verify": "Verifikasi",
+      "cutover": "Cutover",
+      "cleanup": "Pembersihan"
+    },
+    "stageDone": "selesai",
+    "stageCurrent": "langkah saat ini",
+    "notAvailable": "Belum tersedia di versi ini",
+    "phase4Note": "Verifikasi, cutover, dan pembersihan belum dibangun. Sebelum ada, layar ini belum bisa menyelesaikan migrasi dengan aman.",
+    "warnings": "Peringatan",
+    "databases": "Database",
+    "dbProgress": "Kemajuan penyalinan {{database}}",
+    "lag": "Lag replikasi",
+    "retainedWal": "WAL tertahan di sumber",
+    "walHigh": "tinggi",
+    "slot": "Replication slot",
+    "rollbackHeading": "Setelah cutover",
+    "rollbackTitle": "Setelah cutover, tulisan di target tidak mengalir kembali ke sumber",
+    "rollbackBody": "Begitu aplikasi menulis ke target, sumber tidak lagi menerima perubahan itu. Kembali berarti kehilangan perubahan tersebut atau menyalinnya balik secara manual. Jendela rollback dicatat dan menghalangi pembersihan.",
+    "actions": "Tindakan",
+    "actionsUnavailable": "Batalkan dan bersihkan hadir bersama backend sungguhan (tahap U3). Di prototipe ini keduanya tidak melakukan apa pun, jadi dinonaktifkan.",
+    "abort": "Batalkan migrasi",
+    "cleanup": "Bersihkan sumber"
+  }
+}

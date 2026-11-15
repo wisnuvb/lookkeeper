@@ -4,17 +4,18 @@
 > engine, Telegram/Slack/email, SQLite state, optional Prometheus endpoint, optional CloudWatch
 > reader (**never run against real AWS**), `inventory` and `preflight pg` (read-only), CLI `init`,
 > `config validate`, `check`, `monitor run`, `alerts test`, `slots list`, `inventory`, `preflight pg`.
-> **In progress, not on `main`, not pushed:** Phase 3 migration orchestrator on the local branch
-> `integration/phase3` (29 commits ahead of `main`; its spike proved the snapshot->slot handoff, see its
-> `docs/PHASE3-NOTES.md`). **Web UI (ADR 0006):** U0 done (design system in `design-system/lockkeeper/`,
-> real frontend in `web/` on **mocked data**, ID/EN, 155 tests); U1-A done (netguard,
-> vault, auth primitives, hardened `internal/web` server, `lockkeeper serve` preview with demo data, no
-> login, loopback only; build it with `make build-ui`; committed by the owner in `bbe5aba`, with the fixes from the
-> independent security review still uncommitted on top). **Next:** merge Phase 3 first (a clean, non-fast-forward
-> merge since `main` moved: re-run `make ci` and `make test-integration` on the result), then U1-B (schema v3,
-> users/sessions/login, connection registry, API). **Not built yet:** cutover and verification (Phase 4),
-> MySQL migration (Phase 5), authenticated API, registry. **Nothing has been validated against real
-> RDS/Aurora.**
+> **Phase 3 migration orchestrator is merged into `main`** (merge `2b83a28`; its spike proved the
+> snapshot->slot handoff, see `docs/PHASE3-NOTES.md`; not pushed). **Web UI (ADR 0006):** U0 done (design
+> system in `design-system/lockkeeper/`, real frontend in `web/` on **mocked data**, ID/EN, 155 tests); U1-A
+> done (netguard, vault, auth primitives, hardened `internal/web` server, `lockkeeper serve` preview with demo
+> data, no login, loopback only; build it with `make build-ui`; reviewed independently, fixes in `dbebb79`);
+> **U1-B step 1 done, uncommitted:** state schema v3 (users, sessions, append-only `web_audit`), user store
+> with last-admin protection and atomic first-admin setup, SQLite `auth.SessionStore`
+> (`internal/store/{schema_web,users,sessions,web_audit}.go`). **Next in U1-B:** schema v4 (connection registry,
+> vault records), login/logout/setup endpoints and auth+role middleware on `internal/web`, audit of mutating
+> requests, netguard dialer wired into `dbconn`, read API, `QuerySeries`. **Not built yet:** cutover and
+> verification (Phase 4), MySQL migration (Phase 5), authenticated API, registry. **Nothing has been validated
+> against real RDS/Aurora.**
 > Run `make ci` (needs `staticcheck` and `govulncheck` in `$(go env GOPATH)/bin`) and
 > `make test-integration` (needs Docker; `LK_TEST_PG_IMAGE`, `LK_TEST_MYSQL_IMAGE`) before committing.
 
@@ -209,11 +210,12 @@ secret at rest.
   source-changing migration and approving it (the matrix lets `admin` do both, `operator` only plans).
   Should approval require a different user than the planner? (Recommended for a production migration;
   costs a second account.) Decide before U3.
-- **Merge Phase 3:** `integration/phase3` is still not merged; U1-B needs it first (schema version 3). A
-  dry-run on 2026-11-15 showed the merge into `main` is textually clean (29 commits ahead, 1 behind), but
-  it must be built and tested after merging. The owner chose to commit nothing at that moment and then
-  committed U0 + U1-A as one large commit (`bbe5aba`); the project prefers small commits, so splitting it
-  (`git reset --soft b1a63da`, then commit by area) is an option while it is local.
+- **Split commit `bbe5aba`?** It holds U0 + U1-A in one large commit while the project prefers small
+  ones. Only worth doing while it is local (`git reset --soft b1a63da`, then commit by area); the owner
+  has since built on top of it, so this is probably moot.
+- **Flaky integration setup:** `testutil.StartMySQL`/`StartPostgres` call `docker port` right after
+  `docker run`; under a full `make test-integration` (packages in parallel) it failed once with
+  "docker port: exit status 1" and passed alone. Retrying `docker port` a few times would fix it.
 - Name for a shipped short alias (assumed: none).
 - Data size / write rate of the RDS source (unknown; inventory will measure it).
 

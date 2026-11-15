@@ -116,7 +116,7 @@ Decisions taken while building, each verified in a real browser against the real
   (password hashing, tokens, roles, login throttling, CSRF, sessions behind an interface, first-run
   token), `internal/web` and `internal/webui` (hardened server, embedded UI), and a preview command
   `lockkeeper serve` (demo data, loopback only, no login). The UI is embedded with `make build-ui`.
-- **Next slice U1-B** (needs the Phase 3 merge): schema v3, SQLite `SessionStore`, user store and the
+- **Next slice U1-B** (the Phase 3 merge is done, `2b83a28`): schema v3, SQLite `SessionStore`, user store and the
   login/logout/setup/session endpoints, authentication and role middleware, audit of every mutating
   request, the connection registry with vault-backed passwords and the netguard dialer wired into
   `dbconn`, read-only API endpoints, `QuerySeries`, and the server reading its `web:` configuration.
@@ -158,3 +158,31 @@ same slice, each with a regression test that was shown to fail when the fix is r
 - Run `Manager.RunJanitor` in the server so sessions that are never presented again are removed.
 - Never put a token in a URL path (the access log records paths, never query strings).
 - Use a revision in every vault context that can be replaced in place.
+
+### Slice U1-B, step 1 (done): schema v3 and the SQLite stores
+
+State schema **v3** (`internal/store/schema_web.go`, on top of Phase 3's v2) holds `users`, `sessions` and
+`web_audit`. Decisions:
+
+- **Users are disabled, never deleted.** Audit rows and migrations name them; a deleted-then-recreated name
+  would inherit that history. Sessions still cascade if a row is removed by hand.
+- **Usernames are stored canonical** (`auth.CanonicalUsername`: NFKC, lower case, trimmed), so the UNIQUE
+  constraint is the one definition of "same user", matching the login limiter.
+- **The last active administrator cannot be demoted or disabled** (`ErrLastAdmin`), checked inside the same
+  transaction as the change. A disabled admin does not count as active.
+- **`CreateFirstAdmin` inserts only into an empty `users` table, in one transaction**, so concurrent setup
+  requests cannot both win (tested with 8 racing callers). Callers still validate the bootstrap token first
+  and consume it afterwards.
+- **Only digests and hashes reach the disk:** the SHA-256 of a session token and the argon2id PHC string of a
+  password. A test scans the state file and WAL for a live token. The store refuses a password hash that is
+  not argon2id.
+- **`web_audit` is append-only** (triggers refuse UPDATE and DELETE), `detail` is clipped without splitting a
+  multi-byte character, and the outcome is constrained to `ok | denied | error`.
+- `Store.Sessions()` returns the `auth.SessionStore` implementation, driven in tests by the real
+  `auth.Manager` (slide, idle and absolute expiry, revoke, revoke-user, janitor deletion).
+- Seven security controls were broken on purpose (last-admin check, active-admin count, first-admin-once,
+  expiry predicate, revoke-user scope, audit delete trigger, username canonicalisation); each mutant
+  compiled and was killed by a test.
+
+Still to do in U1-B: schema **v4** (connection registry, vault records), the HTTP endpoints and middleware,
+audit of mutating requests, the netguard-wired `dbconn`, the read API and `QuerySeries`.

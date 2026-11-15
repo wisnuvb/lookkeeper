@@ -59,6 +59,7 @@ var migrations = []string{
 	);
 	CREATE INDEX events_ts ON events (ts);`,
 	migrationSchemaV2, // migration state model (schema_migrate.go)
+	webSchemaV3,       // users, sessions, web audit (schema_web.go)
 }
 
 // Store is a handle to the state database.
